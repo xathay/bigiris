@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-targets --locked
+
+  build:
+    name: build (release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release --locked
+      - run: ./target/release/bigiris --self-test
+
+  makepkg:
+    name: makepkg (Arch container)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: install deps
+        run: |
+          pacman -Syu --noconfirm --needed base-devel rust git sudo
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+      - uses: actions/checkout@v4
+      - name: chown for builder
+        run: chown -R builder:builder .
+      - name: makepkg
+        run: |
+          cd pkgbuild
+          sudo -u builder PKGEXT=.pkg.tar makepkg \
+            --noconfirm \
+            --syncdeps \
+            --skipchecksums \
+            --skipinteg \
+            --nocheck \
+            --clean

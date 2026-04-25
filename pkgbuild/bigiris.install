@@ -1,0 +1,47 @@
+_refresh_caches() {
+  glib-compile-schemas /usr/share/glib-2.0/schemas/ &>/dev/null || true
+  update-desktop-database -q /usr/share/applications &>/dev/null || true
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor &>/dev/null || true
+  update-mime-database /usr/share/mime &>/dev/null || true
+  # Dolphin / KIO cache — only present on KDE systems
+  if command -v kbuildsycoca6 &>/dev/null; then
+    kbuildsycoca6 --noincremental &>/dev/null || true
+  elif command -v kbuildsycoca5 &>/dev/null; then
+    kbuildsycoca5 --noincremental &>/dev/null || true
+  fi
+}
+
+post_install() {
+  _refresh_caches
+
+  cat <<'EOF'
+
+ BigIris instalado.
+
+ Integracoes system-wide ativas para Dolphin (KDE), Nemo (Cinnamon),
+ Thunar (XFCE), PCManFM-Qt (LXQt) e Files (elementary) — clique direito
+ numa imagem mostra o submenu "Iris >".
+
+ Nautilus (GNOME) precisa da extensao python sendo registrada no usuario
+ antes de aparecer no top-level do clique direito. Se voce usa Nautilus:
+
+     bigiris install-integrations --user
+     nautilus -q   # reinicia o daemon para carregar a extensao
+
+ Obs: `nautilus-python` precisa estar instalado (ja esta em
+ optdepends). Sem ele, as acoes caem no submenu "Scripts > BigIris >".
+
+ Para remover as integracoes pessoais:
+
+     bigiris uninstall-integrations
+
+EOF
+}
+
+post_upgrade() {
+  _refresh_caches
+}
+
+post_remove() {
+  _refresh_caches
+}

@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bigimage-core",
+    "crates/bigimage-ai",
+    "crates/bigimage-integrations",
+    "crates/bigiris",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license = "GPL-3.0-or-later"
+authors = ["BigLinux team <contato@biglinux.com.br>"]
+repository = "https://github.com/xathay/bigiris"
+homepage = "https://github.com/xathay/bigiris"
+
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+color-eyre = "0.6"
+fast_image_resize = { version = "6", features = ["image"] }
+kamadak-exif = "0.6"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+sha2 = "0.10"
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic", "ndarray"] }
+ndarray = "0.16"
+gtk4 = { version = "0.11", features = ["v4_12"] }
+libadwaita = { version = "0.9", features = ["v1_5"] }
+directories = "5"
+image = { version = "0.25", default-features = false, features = [
+    # Tier 1: pure-Rust formats (default in all builds)
+    "png",
+    "jpeg",
+    "webp",
+    "tiff",
+    "bmp",
+    "gif",
+    "ico",
+    "pnm",
+    "tga",
+    "qoi",
+    "hdr",
+    "exr",
+    # AVIF: encode via ravif (pure Rust) + decode via dav1d (system lib libdav1d)
+    "avif",
+    "avif-native",
+] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[profile.dev]
+opt-level = 1

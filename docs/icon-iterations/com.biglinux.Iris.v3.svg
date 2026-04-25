@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  BigIris — ícone v3 (concept: "Prism Bloom").
+  Metáfora: a flor íris (não o olho), com a luz atravessando um prisma
+  triangular na base e refratando-se em três pétalas curvas espectrais
+  que florescem para cima e para os lados. Narrativa literal do PLAN:
+  "A luz atravessa o Prisma, floresce na Íris."
+  Sem olho, sem lente, sem aperture — evita confusão com app de câmera
+  ou webcam.
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#0f1428"/>
+      <stop offset="100%" stop-color="#050810"/>
+    </linearGradient>
+
+    <!-- Pétala da esquerda: frios (azul → violeta → rosa) -->
+    <linearGradient id="petal-left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#4ea3ff"/>
+      <stop offset="45%"  stop-color="#6a4cff"/>
+      <stop offset="100%" stop-color="#b0378f"/>
+    </linearGradient>
+
+    <!-- Pétala central: luz quente (dourado → vermelho) -->
+    <linearGradient id="petal-center" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#fff3a8"/>
+      <stop offset="45%"  stop-color="#ffb84a"/>
+      <stop offset="100%" stop-color="#e85c3a"/>
+    </linearGradient>
+
+    <!-- Pétala da direita: espectro vivo (verde → teal → azul) -->
+    <linearGradient id="petal-right" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#45d993"/>
+      <stop offset="55%"  stop-color="#2aa6b3"/>
+      <stop offset="100%" stop-color="#2a4dbf"/>
+    </linearGradient>
+
+    <!-- Prisma de vidro (base) -->
+    <linearGradient id="prism" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#6d7ba6" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#1d2440" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Shade overlay sobre pétalas -->
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="60%"  stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.24"/>
+    </linearGradient>
+
+    <!-- Bloom atmosférico atrás das pétalas -->
+    <radialGradient id="halo" cx="50%" cy="55%" r="55%">
+      <stop offset="0%"   stop-color="#fff3c4" stop-opacity="0.28"/>
+      <stop offset="70%"  stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="drop" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.8"/>
+      <feOffset dx="0" dy="2"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.45"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <clipPath id="clipRect">
+      <rect x="6" y="6" width="116" height="116" rx="26" ry="26"/>
+    </clipPath>
+  </defs>
+
+  <!-- Container rounded-square -->
+  <g filter="url(#drop)">
+    <rect x="6" y="6" width="116" height="116" rx="26" ry="26" fill="url(#bg)"/>
+  </g>
+
+  <!-- Halo suave atrás do bloom -->
+  <rect x="6" y="6" width="116" height="116" rx="26" ry="26"
+        fill="url(#halo)" clip-path="url(#clipRect)"/>
+
+  <g clip-path="url(#clipRect)">
+    <!-- Prisma triangular na base (convergência das pétalas) -->
+    <path d="M 48 98 L 64 74 L 80 98 Z" fill="url(#prism)"/>
+    <!-- Borda brilhante do prisma (reflexo de cristal) -->
+    <path d="M 48 98 L 64 74 L 80 98"
+          fill="none" stroke="#ffffff" stroke-width="0.9" opacity="0.55"
+          stroke-linejoin="round"/>
+
+    <!-- Pétala central: sobe reta, vertical, dourado → vermelho -->
+    <path d="M 64 74
+             C 54 56, 52 32, 64 18
+             C 76 32, 74 56, 64 74 Z"
+          fill="url(#petal-center)"/>
+
+    <!-- Pétala esquerda: curva para cima-esquerda, fria -->
+    <path d="M 60 76
+             C 38 64, 20 48, 18 30
+             C 30 28, 50 38, 62 60
+             Z"
+          fill="url(#petal-left)"/>
+
+    <!-- Pétala direita: curva para cima-direita, fresca -->
+    <path d="M 68 76
+             C 90 64, 108 48, 110 30
+             C 98 28, 78 38, 66 60
+             Z"
+          fill="url(#petal-right)"/>
+
+    <!-- Shade overlay unificando iluminação -->
+    <path d="M 64 74
+             C 54 56, 52 32, 64 18
+             C 76 32, 74 56, 64 74 Z"
+          fill="url(#shade)"/>
+    <path d="M 60 76
+             C 38 64, 20 48, 18 30
+             C 30 28, 50 38, 62 60 Z"
+          fill="url(#shade)"/>
+    <path d="M 68 76
+             C 90 64, 108 48, 110 30
+             C 98 28, 78 38, 66 60 Z"
+          fill="url(#shade)"/>
+
+    <!-- Destaque fino onde as pétalas se encontram -->
+    <circle cx="64" cy="74" r="4" fill="#fff3c4" opacity="0.7"/>
+    <circle cx="64" cy="74" r="1.8" fill="#ffffff"/>
+  </g>
+</svg>

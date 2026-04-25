@@ -1,0 +1,34 @@
+[package]
+name = "bigimage-ai"
+description = "AI inference backend for BigIris (ONNX Runtime, feature-gated)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+bigimage-core = { path = "../bigimage-core" }
+thiserror.workspace = true
+tracing.workspace = true
+
+# Model download infrastructure: always built (cheap). Inference
+# (ort + ndarray) stays gated behind `onnx` so CI default and distros
+# without onnxruntime can still compile.
+ureq.workspace = true
+sha2.workspace = true
+directories.workspace = true
+image.workspace = true
+
+ort = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = []
+# Enable ONNX Runtime-based inference (remove-bg, upscale, denoise).
+# Requires `libonnxruntime` at runtime (Arch: `pacman -S onnxruntime`).
+onnx = ["dep:ort", "dep:ndarray"]

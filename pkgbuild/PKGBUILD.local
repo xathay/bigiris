@@ -1,0 +1,104 @@
+# PKGBUILD.local — build a partir do checkout local, sem precisar de
+# repositorio remoto publicado. Uso:
+#
+#   cd pkgbuild
+#   makepkg -si -p PKGBUILD.local
+#
+# Quando o projeto estiver publicado em github.com/biglinux/bigiris, use o
+# PKGBUILD principal (source=git+https://…) — este aqui e apenas um atalho
+# para testar o pacote antes do push.
+
+# Maintainer: Leonardo Athayde <leoathayde@gmail.com>
+# Contributor: Bruno Goncalves <bigbruno@gmail.com>
+
+pkgname=bigiris
+pkgver=0.1.0.local
+pkgrel=1
+arch=('x86_64')
+license=('GPL-3.0-or-later')
+url="https://github.com/biglinux/bigiris"
+pkgdesc="Visualizador e conversor de imagens moderno (build local para testes)"
+depends=(
+  'gcc-libs'
+  'glibc'
+  'gtk4'
+  'libadwaita'
+  'dav1d'
+  'hicolor-icon-theme'
+)
+optdepends=(
+  'libvips: backend de batch para milhares de arquivos'
+  'onnxruntime: IA local — remover fundo (BiRefNet), upscale (Real-ESRGAN)'
+  'libheif: suporte a HEIC/HEIF (Tier 2, quando habilitado)'
+  'libjxl: suporte a JPEG XL (Tier 2, quando habilitado)'
+  'nautilus-python: integração top-level no Nautilus'
+  'dolphin: integração no gerenciador Dolphin (KDE)'
+  'nautilus: integração no gerenciador Nautilus (GNOME)'
+  'nemo: integração no gerenciador Nemo (Cinnamon)'
+  'thunar: integração no gerenciador Thunar (XFCE)'
+  'pcmanfm-qt: integração no gerenciador PCManFM-Qt (LXQt)'
+  'io.elementary.files: integração no gerenciador Files (elementary)'
+)
+makedepends=('rust' 'cargo' 'pkgconf')
+source=()
+md5sums=()
+install="$pkgname.install"
+
+prepare() {
+  # Copia o repo inteiro (pai do diretorio do PKGBUILD) para $srcdir/bigiris,
+  # excluindo target/ e .git para o build nao arrastar gigabytes.
+  local src="$startdir/.."
+  rm -rf "$srcdir/bigiris"
+  mkdir -p "$srcdir/bigiris"
+  (
+    cd "$src"
+    tar --exclude='./target' \
+        --exclude='./.git' \
+        --exclude='./pkgbuild/bigiris' \
+        --exclude='./pkgbuild/pkg' \
+        --exclude='./pkgbuild/src' \
+        --exclude='./pkgbuild/*.pkg.tar.*' \
+        -cf - .
+  ) | tar -xf - -C "$srcdir/bigiris"
+}
+
+build() {
+  cd "$srcdir/bigiris"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+  # `gui` = viewer/dialogos GTK4; `ai` = remover fundo via BiRefNet (ORT).
+  # Se o build falhar por ausencia de libonnxruntime, re-executar com apenas
+  # `--features gui` deixa tudo funcional menos remove-bg.
+  cargo build --locked --release --features "gui ai" --package bigiris
+}
+
+check() {
+  cd "$srcdir/bigiris"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo test --locked --release --workspace
+  "$CARGO_TARGET_DIR/release/bigiris" --self-test
+}
+
+package() {
+  cd "$srcdir/bigiris"
+
+  install -Dm755 "$srcdir/target/release/bigiris" \
+    "$pkgdir/usr/bin/bigiris"
+
+  install -Dm644 "data/com.biglinux.Iris.desktop" \
+    "$pkgdir/usr/share/applications/com.biglinux.Iris.desktop"
+  install -Dm644 "data/com.biglinux.Iris.metainfo.xml" \
+    "$pkgdir/usr/share/metainfo/com.biglinux.Iris.metainfo.xml"
+  install -Dm644 "data/com.biglinux.Iris.gschema.xml" \
+    "$pkgdir/usr/share/glib-2.0/schemas/com.biglinux.Iris.gschema.xml"
+  install -Dm644 "data/icons/hicolor/scalable/apps/com.biglinux.Iris.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.biglinux.Iris.svg"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 PLAN.md "$pkgdir/usr/share/doc/$pkgname/PLAN.md"
+
+  "$srcdir/target/release/bigiris" install-integrations --system \
+    --destdir="$pkgdir"
+}

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.biglinux.Iris</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Íris</name>
+  <name xml:lang="pt-BR">Íris</name>
+  <summary>Visualizador e conversor de imagens moderno</summary>
+  <summary xml:lang="pt-BR">Visualizador e conversor de imagens moderno</summary>
+  <summary xml:lang="en-US">Modern image viewer and converter</summary>
+
+  <description>
+    <p>
+      BigIris is a modern image viewer and converter for Linux, part of the
+      BigLinux family. It combines a Loupe-grade viewer with a full
+      converter module (Prisma) accessible via right-click in the file
+      manager.
+    </p>
+    <p xml:lang="pt-BR">
+      BigIris é um visualizador e conversor de imagens moderno para Linux,
+      parte da família BigLinux. Unifica um visualizador no nível do Loupe
+      com um conversor completo (módulo Prisma) acessível por clique direito
+      no gerenciador de arquivos.
+    </p>
+    <p>Features:</p>
+    <p xml:lang="pt-BR">Recursos:</p>
+    <ul>
+      <li>Fast viewing with GPU acceleration, color management (ICC) and HDR</li>
+      <li xml:lang="pt-BR">Visualização rápida com aceleração GPU, color management (ICC) e HDR</li>
+      <li>Batch conversion: PNG, JPEG, WebP, AVIF, HEIC, JPEG XL, TIFF, BMP</li>
+      <li xml:lang="pt-BR">Conversão em lote: PNG, JPEG, WebP, AVIF, HEIC, JPEG XL, TIFF, BMP</li>
+      <li>Resize, rotate, crop and adjust in batch or per image</li>
+      <li xml:lang="pt-BR">Redimensionar, girar, cortar e ajustar em lote ou em uma imagem</li>
+      <li>Remove background and upscale with open AI models, downloaded on demand</li>
+      <li xml:lang="pt-BR">Remover fundo e ampliar (upscale) com modelos de IA abertos, baixados sob demanda</li>
+      <li>Integrates with Dolphin, Nautilus, Nemo, Thunar, PCManFM-Qt and Files (elementary)</li>
+      <li xml:lang="pt-BR">Integração com Dolphin, Nautilus, Nemo, Thunar, PCManFM-Qt e Arquivos (elementary)</li>
+      <li>Command-line mirroring the GUI for scripts and CI/CD</li>
+      <li xml:lang="pt-BR">Linha de comando espelhando a interface para scripts e CI/CD</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.biglinux.Iris.desktop</launchable>
+
+  <url type="homepage">https://github.com/xathay/bigiris</url>
+  <url type="bugtracker">https://github.com/xathay/bigiris/issues</url>
+  <url type="donation">https://biglinux.com.br/apoie</url>
+
+  <developer id="com.biglinux">
+    <name>BigLinux</name>
+  </developer>
+
+  <provides>
+    <binary>bigiris</binary>
+  </provides>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Viewer</category>
+    <category>RasterGraphics</category>
+    <category>Photography</category>
+  </categories>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2026-04-19">
+      <description>
+        <p xml:lang="pt-BR">Scaffold inicial do projeto (M0).</p>
+      </description>
+    </release>
+  </releases>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <recommends>
+    <memory>512</memory>
+  </recommends>
+</component>

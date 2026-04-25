@@ -1,0 +1,50 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Meson / Ninja
+/build/
+/builddir/
+/_build/
+
+# IDE
+/.vscode/
+/.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+.#*
+\#*#
+
+# Generated
+*.o
+*.a
+
+# Flatpak
+.flatpak-builder/
+repo/
+build-flatpak/
+
+# PKGBUILD outputs
+build-aux/archlinux/*.pkg.tar.zst
+build-aux/archlinux/*.pkg.tar.xz
+build-aux/archlinux/src/
+build-aux/archlinux/pkg/
+build-aux/archlinux/*-*-*-*/
+pkgbuild/*.pkg.tar
+pkgbuild/*.pkg.tar.zst
+pkgbuild/*.pkg.tar.xz
+pkgbuild/src/
+pkgbuild/pkg/
+
+# Modelos de IA baixados em dev
+/models/
+
+# Itens locais (nao publicar)
+/loop.gif
+/prompt_incio_projeto.md
+/.claude/
