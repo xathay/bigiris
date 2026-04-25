@@ -1661,8 +1661,11 @@ fn open_file_chooser(window: &adw::ApplicationWindow) {
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&filter);
 
-    let dialog =
-        gtk::FileDialog::builder().title("Abrir imagens").modal(true).filters(&filters).build();
+    let dialog = gtk::FileDialog::builder()
+        .title(gettext("Abrir imagens"))
+        .modal(true)
+        .filters(&filters)
+        .build();
 
     dialog.open_multiple(Some(window), gio::Cancellable::NONE, move |result| {
         let Ok(list) = result else { return };
@@ -1949,7 +1952,7 @@ fn present_about_dialog(parent: &adw::ApplicationWindow) {
 fn build_dashboard(window: &adw::ApplicationWindow) -> gtk::Widget {
     let status = adw::StatusPage::builder()
         .icon_name("com.biglinux.Iris")
-        .title("Bem-vindo ao BigIris")
+        .title(gettext("Bem-vindo ao BigIris"))
         .description(
             "Visualizador e conversor de imagens do BigLinux.\n\
              Pensado para ser rápido, acessível por teclado e integrado\n\
@@ -1961,8 +1964,10 @@ fn build_dashboard(window: &adw::ApplicationWindow) -> gtk::Widget {
     // Feature cards — cada um abre um picker de imagens e relança o
     // próprio binário no modo certo (viewer, --dialog=batch, etc.).
     // Vai-e-volta evita reimplementar o pipeline em cima do dashboard.
-    let features =
-        adw::PreferencesGroup::builder().title("O que dá pra fazer").margin_top(16).build();
+    let features = adw::PreferencesGroup::builder()
+        .title(gettext("O que dá pra fazer"))
+        .margin_top(16)
+        .build();
     for (title, subtitle, icon, action) in FEATURE_HIGHLIGHTS {
         let row = adw::ActionRow::builder()
             .title(*title)
@@ -2133,7 +2138,8 @@ fn dispatch_feature(window: &adw::ApplicationWindow, action: &'static str) {
 /// processo com esses arquivos para reusar a lógica de carregamento do
 /// CLI. Simples e previsível — evita duplicar o pipeline de load in-place.
 fn open_files_dialog(window: &adw::ApplicationWindow) {
-    let dialog = gtk::FileDialog::builder().title("Selecionar imagens").modal(true).build();
+    let dialog =
+        gtk::FileDialog::builder().title(gettext("Selecionar imagens")).modal(true).build();
     // Filtro de imagens: tudo que o nosso decoder aguenta.
     let filter = gtk::FileFilter::new();
     filter.set_name(Some("Imagens"));
@@ -2376,7 +2382,7 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .application(app)
         .default_width(880)
         .default_height(500)
-        .title("Converter imagens — Prisma")
+        .title(gettext("Converter imagens — Prisma"))
         .build();
 
     let header = adw::HeaderBar::new();
@@ -2387,13 +2393,13 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
 
     let format_names: Vec<&str> = CONVERT_FORMATS.iter().map(|(n, _)| *n).collect();
     let format_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&format_names))
         .build();
 
     let overwrite_names: Vec<&str> = OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect();
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(&overwrite_names))
         .build();
 
@@ -2408,13 +2414,13 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
     quality_spin.set_value(85.0);
 
     let progressive_switch = adw::SwitchRow::builder()
-        .title("JPEG progressivo")
+        .title(gettext("JPEG progressivo"))
         .subtitle("carregamento em passes (formatos que suportam)")
         .active(false)
         .build();
 
     let optimize_switch = adw::SwitchRow::builder()
-        .title("Otimizar tamanho")
+        .title(gettext("Otimizar tamanho"))
         .subtitle("PNG com compressão máxima; mais lento, arquivo menor")
         .active(false)
         .build();
@@ -2446,7 +2452,9 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
     // Smart prompt: if the source image has an alpha channel and the user
     // picks JPEG, warn that transparency will be flattened.
     let alpha_banner = adw::Banner::builder()
-        .title("Esta imagem tem transparência — JPEG perde o canal alfa. Considere PNG ou WebP.")
+        .title(gettext(
+            "Esta imagem tem transparência — JPEG perde o canal alfa. Considere PNG ou WebP.",
+        ))
         .revealed(false)
         .build();
     if let Some(sess) = preview_session.as_ref() {
@@ -2577,7 +2585,7 @@ fn build_resize_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
         .application(app)
         .default_width(900)
         .default_height(640)
-        .title("Redimensionar imagens — Prisma")
+        .title(gettext("Redimensionar imagens — Prisma"))
         .build();
 
     let header = adw::HeaderBar::new();
@@ -2653,20 +2661,20 @@ fn build_resize_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
 
     let filter_names: Vec<&str> = RESIZE_FILTERS.iter().map(|(n, _)| *n).collect();
     let filter_row = adw::ComboRow::builder()
-        .title("Kernel de interpolação")
+        .title(gettext("Kernel de interpolação"))
         .model(&gtk::StringList::new(&filter_names))
         .build();
 
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
     target_names.extend(CONVERT_FORMATS.iter().map(|(n, _)| *n));
     let target_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&target_names))
         .build();
 
     let overwrite_names: Vec<&str> = OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect();
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(&overwrite_names))
         .build();
 
@@ -2678,10 +2686,11 @@ fn build_resize_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
     let group_files = adw::PreferencesGroup::new();
     group_files.add(&files_row);
 
-    let group_mode = adw::PreferencesGroup::builder().title("Modo de redimensionamento").build();
+    let group_mode =
+        adw::PreferencesGroup::builder().title(gettext("Modo de redimensionamento")).build();
     group_mode.add(&mode_row);
 
-    let group_options = adw::PreferencesGroup::builder().title("Opções").build();
+    let group_options = adw::PreferencesGroup::builder().title(gettext("Opções")).build();
     group_options.add(&filter_row);
     group_options.add(&target_row);
     group_options.add(&overwrite_row);
@@ -3032,7 +3041,7 @@ fn build_rotate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
         .application(app)
         .default_width(440)
         .default_height(340)
-        .title("Girar imagens — Prisma")
+        .title(gettext("Girar imagens — Prisma"))
         .build();
 
     let header = adw::HeaderBar::new();
@@ -3045,12 +3054,12 @@ fn build_rotate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
     target_names.extend(CONVERT_FORMATS.iter().map(|(n, _)| *n));
     let target_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&target_names))
         .build();
 
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(
             &OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
         ))
@@ -3454,7 +3463,7 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
         .application(app)
         .default_width(900)
         .default_height(560)
-        .title("Recortar — Prisma")
+        .title(gettext("Recortar — Prisma"))
         .build();
 
     let header = adw::HeaderBar::new();
@@ -3488,7 +3497,7 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
         .build();
 
     let natural_row = adw::ActionRow::builder()
-        .title("Tamanho original")
+        .title(gettext("Tamanho original"))
         .subtitle(format!("{} × {} px (primeiro arquivo)", natural.0, natural.1))
         .build();
 
@@ -3513,12 +3522,12 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
     target_names.extend(CONVERT_FORMATS.iter().map(|(n, _)| *n));
     let target_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&target_names))
         .build();
 
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(
             &OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
         ))
@@ -3656,7 +3665,7 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .application(app)
         .default_width(820)
         .default_height(500)
-        .title("Aumentar resolução — Prisma")
+        .title(gettext("Aumentar resolução — Prisma"))
         .build();
 
     let header = adw::HeaderBar::new();
@@ -3698,7 +3707,7 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .build();
 
     let natural_row = adw::ActionRow::builder()
-        .title("Tamanho original")
+        .title(gettext("Tamanho original"))
         .subtitle(if natural == (0, 0) {
             "—".to_string()
         } else {
@@ -3710,7 +3719,8 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
     let factor_row =
         adw::ComboRow::builder().title("Fator").model(&gtk::StringList::new(&factor_names)).build();
 
-    let predicted_row = adw::ActionRow::builder().title("Destino previsto").subtitle("—").build();
+    let predicted_row =
+        adw::ActionRow::builder().title(gettext("Destino previsto")).subtitle("—").build();
     {
         let factor_row_c = factor_row.clone();
         let predicted_row_c = predicted_row.clone();
@@ -3732,12 +3742,12 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
     target_names.extend(CONVERT_FORMATS.iter().map(|(n, _)| *n));
     let target_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&target_names))
         .build();
 
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(
             &OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
         ))
@@ -3866,7 +3876,7 @@ fn build_flip_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
         .application(app)
         .default_width(440)
         .default_height(340)
-        .title("Espelhar imagens — Prisma")
+        .title(gettext("Espelhar imagens — Prisma"))
         .build();
 
     let header = adw::HeaderBar::new();
@@ -3879,12 +3889,12 @@ fn build_flip_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
     target_names.extend(CONVERT_FORMATS.iter().map(|(n, _)| *n));
     let target_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&target_names))
         .build();
 
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(
             &OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
         ))
@@ -3995,7 +4005,7 @@ fn build_adjust_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
         .application(app)
         .default_width(880)
         .default_height(640)
-        .title("Ajustar cores — Prisma")
+        .title(gettext("Ajustar cores — Prisma"))
         .build();
 
     // Preview session — loaded from the first file. Multi-select still works
@@ -4029,12 +4039,12 @@ fn build_adjust_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
     target_names.extend(CONVERT_FORMATS.iter().map(|(n, _)| *n));
     let target_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&target_names))
         .build();
 
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(
             &OVERWRITE_CHOICES.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
         ))
@@ -4048,15 +4058,15 @@ fn build_adjust_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
     let group_files = adw::PreferencesGroup::new();
     group_files.add(&files_row);
 
-    let group_tone = adw::PreferencesGroup::builder().title("Tom").build();
+    let group_tone = adw::PreferencesGroup::builder().title(gettext("Tom")).build();
     group_tone.add(&brightness);
     group_tone.add(&contrast);
     group_tone.add(&gamma);
 
-    let group_color = adw::PreferencesGroup::builder().title("Cor").build();
+    let group_color = adw::PreferencesGroup::builder().title(gettext("Cor")).build();
     group_color.add(&saturation);
 
-    let group_out = adw::PreferencesGroup::builder().title("Saída").build();
+    let group_out = adw::PreferencesGroup::builder().title(gettext("Saída")).build();
     group_out.add(&target_row);
     group_out.add(&overwrite_row);
 
@@ -4250,7 +4260,8 @@ fn build_properties_window(app: &adw::Application, path: &Path) -> adw::Applicat
     if let Ok(meta) = metadata::read(path) {
         if !meta.is_empty() {
             if meta.has_gps || meta.has_camera_info {
-                let warning = adw::PreferencesGroup::builder().title("Privacidade").build();
+                let warning =
+                    adw::PreferencesGroup::builder().title(gettext("Privacidade")).build();
                 let row = adw::ActionRow::builder()
                     .title(if meta.has_gps {
                         "Coordenadas GPS presentes"
@@ -4275,7 +4286,7 @@ fn build_properties_window(app: &adw::Application, path: &Path) -> adw::Applicat
 }
 
 fn build_properties_file_group(path: &Path) -> adw::PreferencesGroup {
-    let group = adw::PreferencesGroup::builder().title("Arquivo").build();
+    let group = adw::PreferencesGroup::builder().title(gettext("Arquivo")).build();
 
     let filename = path
         .file_name()
@@ -4310,7 +4321,7 @@ fn build_properties_file_group(path: &Path) -> adw::PreferencesGroup {
 }
 
 fn build_properties_image_group(path: &Path) -> adw::PreferencesGroup {
-    let group = adw::PreferencesGroup::builder().title("Imagem").build();
+    let group = adw::PreferencesGroup::builder().title(gettext("Imagem")).build();
     match image::image_dimensions(path) {
         Ok((w, h)) => {
             group.add(&info_row("Dimensões", &format!("{w} × {h} px")));
@@ -4605,7 +4616,7 @@ fn build_batch_dialog(
     let convert_group = adw::PreferencesGroup::builder().title("Conversão").build();
 
     let format_row = adw::ComboRow::builder()
-        .title("Formato de destino")
+        .title(gettext("Formato de destino"))
         .model(&gtk::StringList::new(&format_names))
         .build();
     convert_group.add(&format_row);
@@ -4617,13 +4628,13 @@ fn build_batch_dialog(
     convert_group.add(&quality_spin);
 
     let progressive_switch = adw::SwitchRow::builder()
-        .title("JPEG progressivo")
+        .title(gettext("JPEG progressivo"))
         .subtitle("carregamento em passes (formatos que suportam)")
         .build();
     convert_group.add(&progressive_switch);
 
     let optimize_switch = adw::SwitchRow::builder()
-        .title("Otimizar tamanho")
+        .title(gettext("Otimizar tamanho"))
         .subtitle("PNG com compressão máxima; mais lento, arquivo menor")
         .build();
     convert_group.add(&optimize_switch);
@@ -4631,7 +4642,7 @@ fn build_batch_dialog(
     // ── Grupo: destino ──────────────────────────────────────────────────
     let dest_group = adw::PreferencesGroup::builder().title("Destino").build();
     let overwrite_row = adw::ComboRow::builder()
-        .title("Se o arquivo de saída existir")
+        .title(gettext("Se o arquivo de saída existir"))
         .model(&gtk::StringList::new(&overwrite_names))
         .build();
     dest_group.add(&overwrite_row);
@@ -5384,7 +5395,7 @@ fn build_remove_bg_dialog(
     // eram interpretados como tag malformada e a linha ficava vazia.
     // Usar chevrons Unicode evita o parser sem escaping manual.
     let output_row = adw::ActionRow::builder()
-        .title("Saída")
+        .title(gettext("Saída"))
         .subtitle("«origem»_nobg.png · PNG com alfa, sem sobrescrever")
         .build();
     let output_icon = gtk::Image::from_icon_name("document-save-symbolic");
