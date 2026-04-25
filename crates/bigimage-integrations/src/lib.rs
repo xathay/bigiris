@@ -18,6 +18,7 @@ pub mod nautilus;
 pub mod nemo;
 pub mod pantheon;
 pub mod pcmanfm_qt;
+mod safe_fs;
 pub mod scope;
 pub mod thunar;
 

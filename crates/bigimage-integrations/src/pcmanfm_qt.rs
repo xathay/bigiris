@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::action::{Action, ACTIONS};
 use crate::nemo::flat_label;
+use crate::safe_fs::safe_write;
 use crate::scope::{remove_matching, ScopePaths};
 
 /// Install one `.desktop` per [`Action`].
@@ -16,7 +17,7 @@ pub fn install(paths: &ScopePaths) -> io::Result<Vec<PathBuf>> {
     let mut written = Vec::new();
     for action in ACTIONS {
         let file = dir.join(format!("bigiris-{}.desktop", action.id));
-        std::fs::write(&file, render(action))?;
+        safe_write(&file, render(action))?;
         written.push(file);
     }
     Ok(written)

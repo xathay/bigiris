@@ -11,6 +11,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::action::{Action, ACTIONS, TOP_LEVEL_LABEL};
+use crate::safe_fs::safe_write;
 use crate::scope::ScopePaths;
 
 const EMPTY_XML: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<actions>\n</actions>\n";
@@ -24,7 +25,7 @@ pub fn install(paths: &ScopePaths) -> io::Result<Vec<PathBuf>> {
     let existing = read_or_default(&target)?;
     let stripped = strip_bigiris_actions(&existing);
     let merged = inject_before_close(&stripped, &render_all_actions());
-    std::fs::write(&target, merged)?;
+    safe_write(&target, merged)?;
     Ok(vec![target])
 }
 
@@ -41,7 +42,7 @@ pub fn uninstall(paths: &ScopePaths) -> io::Result<Vec<PathBuf>> {
     if !stripped.contains("<action>") {
         std::fs::remove_file(&target)?;
     } else {
-        std::fs::write(&target, stripped)?;
+        safe_write(&target, stripped)?;
     }
     Ok(vec![target])
 }
@@ -124,6 +125,19 @@ fn render_action(action: &Action) -> String {
         Some(sub) => format!("{TOP_LEVEL_LABEL}/{}", sub.label),
         None => TOP_LEVEL_LABEL.to_string(),
     };
+    // Thunar passes <command> through `g_shell_parse_argv`, so a malicious
+    // filename containing `$()` or backticks would otherwise be interpreted
+    // as shell metasyntax. Wrap in `sh -c '… "$@"' progname …` so paths
+    // become positional args ($1, $2, …) and never re-traverse the parser.
+    let safe_cmd = wrap_for_shell(action);
+    // Filter element: `<image-files/>` restricts the action to image MIME
+    // (KDE/GNOME convention). Document-MIME actions (PDF submenu) need
+    // `<other-files/>` or they're invisible on .docx/.odt selections.
+    let file_filter = if action.mime_types.iter().any(|m| m.starts_with("image/")) {
+        "<image-files/>"
+    } else {
+        "<other-files/>"
+    };
     format!(
         "<action>\n\
          \t<icon>{icon}</icon>\n\
@@ -134,14 +148,27 @@ fn render_action(action: &Action) -> String {
          \t<description>BigIris — {label}</description>\n\
          \t<range>0</range>\n\
          \t<patterns>*</patterns>\n\
-         \t<image-files/>\n\
+         \t{filter}\n\
          </action>",
         icon = escape_xml(action.icon),
         label = escape_xml(action.label),
         submenu = escape_xml(&submenu_path),
         id = action.id,
-        cmd = escape_xml(action.command),
+        cmd = escape_xml(&safe_cmd),
+        filter = file_filter,
     )
+}
+
+/// Rewrite `bigiris … %F` into `sh -c '… "$@"' bigiris-id %F` so the file
+/// paths (whatever Thunar substitutes for `%F`) become positional argv
+/// entries, never re-parsed by the shell. Action templates are required
+/// (by `every_command_uses_file_placeholder` test) to end with `%F`.
+fn wrap_for_shell(action: &Action) -> String {
+    let body = action.command.trim_end_matches("%F").trim_end();
+    // Action templates are static `&'static str` and currently never
+    // contain a single quote, but escape anyway: `'` → `'\''`.
+    let escaped = body.replace('\'', r"'\''");
+    format!("sh -c '{escaped} -- \"$@\"' bigiris-{id} %F", id = action.id)
 }
 
 fn escape_xml(s: &str) -> String {
@@ -217,8 +244,12 @@ mod tests {
         let first = read(&paths.thunar_uca());
         install(&paths).unwrap();
         let second = read(&paths.thunar_uca());
-        let first_count = first.matches("bigiris-convert-png").count();
-        let second_count = second.matches("bigiris-convert-png").count();
+        // Idempotency = exactly one <action> block per id. Count the
+        // unique-id tag, not the bare action id (the shell wrapper now
+        // also embeds it as `progname` for sh -c).
+        let needle = "<unique-id>bigiris-convert-png</unique-id>";
+        let first_count = first.matches(needle).count();
+        let second_count = second.matches(needle).count();
         assert_eq!(first_count, 1, "primeira execucao duplicou? ({first_count})");
         assert_eq!(second_count, 1, "segunda execucao duplicou? ({second_count})");
     }
@@ -266,6 +297,39 @@ mod tests {
     fn escape_xml_handles_reserved_chars() {
         assert_eq!(escape_xml("a & b < c"), "a &amp; b &lt; c");
         assert_eq!(escape_xml("\"hi\""), "&quot;hi&quot;");
+    }
+
+    #[test]
+    fn wrap_for_shell_yields_argv_safe_command() {
+        // Find the convert-png action so we exercise a representative template.
+        let a = ACTIONS.iter().find(|a| a.id == "convert-png").unwrap();
+        let wrapped = wrap_for_shell(a);
+        // Body ends with "$@" -- so file paths become positional argv entries,
+        // and sh -c never re-parses %F's expansion as shell.
+        assert!(wrapped.starts_with("sh -c '"));
+        assert!(wrapped.contains(r#"-- "$@"' bigiris-convert-png %F"#));
+        // Original %F should NOT appear inside the quoted body.
+        let body =
+            wrapped.strip_prefix("sh -c '").and_then(|r| r.split_once("' bigiris-")).unwrap().0;
+        assert!(!body.contains("%F"), "%F leaked into shell-parsed body: {body}");
+    }
+
+    #[test]
+    fn document_action_renders_other_files_filter() {
+        // The PDF submenu uses DOC_MIME; Thunar needs <other-files/> for those
+        // to appear on .docx/.odt selections rather than only on image MIME.
+        let a = ACTIONS.iter().find(|a| a.id == "pdf-convert").unwrap();
+        let xml = render_action(a);
+        assert!(xml.contains("<other-files/>"), "DOC_MIME action missing <other-files/>: {xml}");
+        assert!(!xml.contains("<image-files/>"), "DOC_MIME action wrongly emits <image-files/>");
+    }
+
+    #[test]
+    fn image_action_renders_image_files_filter() {
+        let a = ACTIONS.iter().find(|a| a.id == "convert-png").unwrap();
+        let xml = render_action(a);
+        assert!(xml.contains("<image-files/>"));
+        assert!(!xml.contains("<other-files/>"));
     }
 
     #[test]

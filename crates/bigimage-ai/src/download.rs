@@ -116,6 +116,12 @@ pub fn ensure(
     Ok(dest)
 }
 
+/// Margin we tolerate over the catalogue's `expected_total` before
+/// aborting a download. 16 MiB is enough to absorb an updated model
+/// (a quantisation tweak that shifts a few MB) but small enough that a
+/// hostile mirror can't fill the disk before SHA-256 verification.
+const MAX_OVER_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Stream `url` into `dest`, calling `progress(current, total)` every
 /// chunk. Uses a 64 KiB buffer — enough to amortise syscalls without
 /// blowing cache locality.
@@ -130,6 +136,11 @@ fn download_stream(
     let total: u64 =
         resp.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(expected_total);
 
+    // Hard cap the size budget at `expected_total + MAX_OVER_BYTES`. A hostile
+    // mirror returning 50 GB of payload would otherwise fill the user's disk
+    // before the SHA-256 check at the end gets to reject it.
+    let budget = expected_total.saturating_add(MAX_OVER_BYTES);
+
     let mut reader = resp.into_reader();
     let mut file = std::fs::File::create(dest).map_err(DownloadError::Io)?;
 
@@ -142,6 +153,17 @@ fn download_stream(
         }
         file.write_all(&buf[..n]).map_err(DownloadError::Io)?;
         done = done.saturating_add(n as u64);
+        if done > budget {
+            // Drop the partial; the caller's `ensure` flow already swallows
+            // any remove error so we don't leak filesystem state to it.
+            drop(file);
+            let _ = std::fs::remove_file(dest);
+            return Err(DownloadError::Http(format!(
+                "servidor enviou mais que o esperado ({} MB > limite de {} MB)",
+                done / (1024 * 1024),
+                budget / (1024 * 1024),
+            )));
+        }
         progress(done, total);
     }
     file.flush().map_err(DownloadError::Io)?;

@@ -11,10 +11,65 @@ use crate::convert::OverwritePolicy;
 use crate::encode::EncodeOptions;
 use crate::{BigImageError, Format, Result};
 
+/// Hard cap on input file size before we even open the decoder. Beyond this
+/// no normal photo workflow makes sense, and a malicious file (decode bomb,
+/// ZIP-style amplification) would only cost more memory. 1 GiB is generous
+/// enough for RAW or large EXR while still bounding the worst case.
+const MAX_INPUT_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Hard cap on decoded pixel count. 256 megapixels covers any consumer
+/// camera (16384×16384 ≈ 268 MP) and most stitched panoramas; beyond it,
+/// expanding to RGBA8 would allocate >1 GiB and risk DoS. Refused before
+/// `decode()` so the malicious input never gets decompressed at all.
+const MAX_PIXELS: u64 = 256 * 1024 * 1024;
+
 /// Open `input`, identify its source format, and decode. Returns the decoded
 /// image alongside the format tag so callers can preserve the source encoding
 /// when the user didn't pick a target.
+///
+/// Refuses inputs that exceed [`MAX_INPUT_BYTES`] (file size) or
+/// [`MAX_PIXELS`] (decoded dimensions), turning what would otherwise be
+/// silent OOMs / multi-GB allocations into a clean error early in the
+/// pipeline. The dimension check uses [`ImageReader::into_dimensions`]
+/// which only parses the format header — no decompression.
 pub(crate) fn decode_with_source_format(input: &Path) -> Result<(DynamicImage, Format)> {
+    // Cheap first guard: file size from the FS metadata. Catches the
+    // "attacker streamed 50 GB of garbage" case without touching the
+    // decoder.
+    let bytes = std::fs::metadata(input).map_err(BigImageError::Io)?.len();
+    if bytes > MAX_INPUT_BYTES {
+        return Err(BigImageError::InvalidInput(format!(
+            "{} excede o limite de entrada ({} MB > {} MB)",
+            input.display(),
+            bytes / (1024 * 1024),
+            MAX_INPUT_BYTES / (1024 * 1024),
+        )));
+    }
+
+    // Peek dimensions before allocating a full decoded buffer. Refuses
+    // pixel bombs (e.g. a tiny PNG header claiming 100k × 100k) before the
+    // decoder ever expands them in memory.
+    let dims_reader = ImageReader::open(input)
+        .map_err(BigImageError::Io)?
+        .with_guessed_format()
+        .map_err(BigImageError::Io)?;
+    let (w, h) = dims_reader
+        .into_dimensions()
+        .map_err(|e| BigImageError::Decode { path: input.to_path_buf(), source: e })?;
+    let pixels = u64::from(w).saturating_mul(u64::from(h));
+    if pixels > MAX_PIXELS {
+        return Err(BigImageError::InvalidInput(format!(
+            "{} excede o limite de pixels ({}×{} = {} MP > {} MP)",
+            input.display(),
+            w,
+            h,
+            pixels / (1024 * 1024),
+            MAX_PIXELS / (1024 * 1024),
+        )));
+    }
+
+    // Re-open for the actual decode. Cheap because the file is already in
+    // the page cache from the dimension peek.
     let reader = ImageReader::open(input)
         .map_err(BigImageError::Io)?
         .with_guessed_format()

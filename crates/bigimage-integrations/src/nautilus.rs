@@ -45,7 +45,7 @@ pub fn install(paths: &ScopePaths) -> io::Result<Vec<PathBuf>> {
     let ext_dir = paths.nautilus_python_extensions();
     std::fs::create_dir_all(&ext_dir)?;
     let ext_file = ext_dir.join(PYTHON_EXTENSION_FILENAME);
-    std::fs::write(&ext_file, PYTHON_EXTENSION)?;
+    crate::safe_fs::safe_write(&ext_file, PYTHON_EXTENSION)?;
     written.push(ext_file);
 
     Ok(written)

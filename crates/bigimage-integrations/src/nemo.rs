@@ -6,6 +6,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::action::{Action, ACTIONS, TOP_LEVEL_LABEL};
+use crate::safe_fs::safe_write;
 use crate::scope::{remove_matching, ScopePaths};
 
 /// Install one `.nemo_action` per [`Action`].
@@ -15,7 +16,7 @@ pub fn install(paths: &ScopePaths) -> io::Result<Vec<PathBuf>> {
     let mut written = Vec::new();
     for action in ACTIONS {
         let file = dir.join(format!("bigiris-{}.nemo_action", action.id));
-        std::fs::write(&file, render(action))?;
+        safe_write(&file, render(action))?;
         written.push(file);
     }
     Ok(written)

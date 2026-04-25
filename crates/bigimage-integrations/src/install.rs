@@ -205,7 +205,7 @@ fn install_app_files(paths: &ScopePaths) -> Vec<PathBuf> {
             continue;
         }
         let target = dir.join(name);
-        if std::fs::write(&target, content).is_ok() {
+        if crate::safe_fs::safe_write(&target, content).is_ok() {
             written.push(target);
         }
     }
