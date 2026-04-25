@@ -172,7 +172,6 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
     // botão depois que o state existe — veja mais abaixo. Header fica com
     // os quick-buttons (info/fullscreen) agora.
 
-
     let picture = gtk::Picture::new();
     picture.set_content_fit(gtk::ContentFit::Contain);
     picture.set_hexpand(true);
@@ -373,14 +372,12 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
             // is in window-root coords. Convert to scroller-local coords so
             // adjust_zoom can anchor the re-scroll on the pixel under the
             // pointer: root.compute_point(&scroller, pt) — NOT the reverse.
-            let cursor = controller.current_event().and_then(|e| e.position()).and_then(
-                |(wx, wy)| {
+            let cursor =
+                controller.current_event().and_then(|e| e.position()).and_then(|(wx, wy)| {
                     let root = scroller.root()?;
                     let pt = graphene::Point::new(wx as f32, wy as f32);
-                    root.compute_point(&scroller, &pt)
-                        .map(|p| (f64::from(p.x()), f64::from(p.y())))
-                },
-            );
+                    root.compute_point(&scroller, &pt).map(|p| (f64::from(p.x()), f64::from(p.y())))
+                });
             if dy < -0.01 {
                 adjust_zoom(&state, ZOOM_STEP, cursor);
                 pulse_osd(&state);
@@ -524,8 +521,7 @@ fn refresh_film_strip_active(state: &Rc<RefCell<ViewerState>>) {
             if let Some(parent) = btn.parent() {
                 if let Some(rect) = btn.compute_bounds(&parent) {
                     if rect.width() > 0.0 {
-                        let target =
-                            rect.x() as f64 - (viewport_w - rect.width() as f64) / 2.0;
+                        let target = rect.x() as f64 - (viewport_w - rect.width() as f64) / 2.0;
                         strip.hadjustment().set_value(target.max(0.0));
                     }
                 }
@@ -645,10 +641,10 @@ fn reveal_top(state: &Rc<RefCell<ViewerState>>) {
         return;
     }
     let clone = state.clone();
-    let id = glib::timeout_add_local_once(
-        std::time::Duration::from_millis(EDGE_HIDE_MS),
-        move || hide_top(&clone),
-    );
+    let id =
+        glib::timeout_add_local_once(std::time::Duration::from_millis(EDGE_HIDE_MS), move || {
+            hide_top(&clone)
+        });
     state.borrow_mut().top_hide_source = Some(id);
 }
 
@@ -679,10 +675,10 @@ fn reveal_bottom(state: &Rc<RefCell<ViewerState>>) {
         return;
     }
     let clone = state.clone();
-    let id = glib::timeout_add_local_once(
-        std::time::Duration::from_millis(EDGE_HIDE_MS),
-        move || hide_bottom(&clone),
-    );
+    let id =
+        glib::timeout_add_local_once(std::time::Duration::from_millis(EDGE_HIDE_MS), move || {
+            hide_bottom(&clone)
+        });
     state.borrow_mut().bottom_hide_source = Some(id);
 }
 
@@ -714,10 +710,10 @@ fn pulse_osd(state: &Rc<RefCell<ViewerState>>) {
         return;
     }
     let clone = state.clone();
-    let id = glib::timeout_add_local_once(
-        std::time::Duration::from_millis(OSD_PULSE_MS),
-        move || hide_osd(&clone),
-    );
+    let id =
+        glib::timeout_add_local_once(std::time::Duration::from_millis(OSD_PULSE_MS), move || {
+            hide_osd(&clone)
+        });
     state.borrow_mut().osd_hide_source = Some(id);
 }
 
@@ -748,9 +744,8 @@ fn schedule_cursor_hide(state: &Rc<RefCell<ViewerState>>) {
     }
     drop(s);
     let clone = state.clone();
-    let id = glib::timeout_add_local_once(
-        std::time::Duration::from_millis(CURSOR_HIDE_MS),
-        move || {
+    let id =
+        glib::timeout_add_local_once(std::time::Duration::from_millis(CURSOR_HIDE_MS), move || {
             // Double-check na hora do disparo: user pode ter aberto um
             // diálogo nos últimos CURSOR_HIDE_MS ms.
             let s = clone.borrow_mut();
@@ -763,8 +758,7 @@ fn schedule_cursor_hide(state: &Rc<RefCell<ViewerState>>) {
             s.window.set_cursor(cursor.as_ref());
             drop(s);
             clone.borrow_mut().cursor_hide_source = None;
-        },
-    );
+        });
     state.borrow_mut().cursor_hide_source = Some(id);
 }
 
@@ -954,8 +948,7 @@ fn toggle_slideshow(state: &Rc<RefCell<ViewerState>>) {
     });
     state.borrow_mut().slideshow_source = Some(id);
     let s = state.borrow();
-    s.osd_label
-        .set_text(&format!("Slideshow: {}s", SLIDESHOW_INTERVAL_S));
+    s.osd_label.set_text(&format!("Slideshow: {}s", SLIDESHOW_INTERVAL_S));
     drop(s);
     pulse_osd(state);
 }
@@ -1147,10 +1140,7 @@ fn save_edits(state: &Rc<RefCell<ViewerState>>) {
     } else {
         format!("\"{name}\" será sobrescrito.")
     };
-    let alert = adw::AlertDialog::builder()
-        .heading("Salvar alterações?")
-        .body(body)
-        .build();
+    let alert = adw::AlertDialog::builder().heading("Salvar alterações?").body(body).build();
     alert.add_response("cancel", "Cancelar");
     alert.add_response("save", "Salvar");
     alert.set_response_appearance("save", adw::ResponseAppearance::Suggested);
@@ -1158,24 +1148,22 @@ fn save_edits(state: &Rc<RefCell<ViewerState>>) {
     alert.set_close_response("cancel");
 
     let state = state.clone();
-    alert.connect_response(Some("save"), move |_, _| {
-        match write_edits_to_disk(&path, &ops) {
-            Ok(()) => {
-                state.borrow_mut().pending_ops.clear();
-                refresh_title(&state);
-                sync_save_action(&state);
-                let s = state.borrow();
-                s.osd_label.set_text("Salvo");
-                drop(s);
-                pulse_osd(&state);
-            }
-            Err(e) => {
-                tracing::error!(?path, error = %e, "save: falha ao gravar edições");
-                let s = state.borrow();
-                s.osd_label.set_text("Falha ao salvar");
-                drop(s);
-                pulse_osd(&state);
-            }
+    alert.connect_response(Some("save"), move |_, _| match write_edits_to_disk(&path, &ops) {
+        Ok(()) => {
+            state.borrow_mut().pending_ops.clear();
+            refresh_title(&state);
+            sync_save_action(&state);
+            let s = state.borrow();
+            s.osd_label.set_text("Salvo");
+            drop(s);
+            pulse_osd(&state);
+        }
+        Err(e) => {
+            tracing::error!(?path, error = %e, "save: falha ao gravar edições");
+            let s = state.borrow();
+            s.osd_label.set_text("Falha ao salvar");
+            drop(s);
+            pulse_osd(&state);
         }
     });
     alert.present(Some(&window));
@@ -1569,10 +1557,7 @@ fn install_viewer_actions(
                 s.files[s.idx].clone()
             };
             if let Ok(exe) = std::env::current_exe() {
-                let _ = std::process::Command::new(exe)
-                    .arg("--dialog=crop")
-                    .arg(path)
-                    .spawn();
+                let _ = std::process::Command::new(exe).arg("--dialog=crop").arg(path).spawn();
             }
         });
     }
@@ -1615,9 +1600,7 @@ fn install_viewer_actions(
     window.add_action(&trash);
 
     // Fullscreen só faz sentido com imagem; dashboard tem flow diferente.
-    let fullscreen_action = window
-        .lookup_action("fullscreen")
-        .and_downcast::<gio::SimpleAction>();
+    let fullscreen_action = window.lookup_action("fullscreen").and_downcast::<gio::SimpleAction>();
     if let Some(action) = fullscreen_action {
         action.set_enabled(has_files);
     }
@@ -1655,33 +1638,25 @@ fn open_file_chooser(window: &adw::ApplicationWindow) {
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&filter);
 
-    let dialog = gtk::FileDialog::builder()
-        .title("Abrir imagens")
-        .modal(true)
-        .filters(&filters)
-        .build();
+    let dialog =
+        gtk::FileDialog::builder().title("Abrir imagens").modal(true).filters(&filters).build();
 
-    dialog.open_multiple(
-        Some(window),
-        gio::Cancellable::NONE,
-        move |result| {
-            let Ok(list) = result else { return };
-            let mut paths: Vec<String> = Vec::new();
-            for i in 0..list.n_items() {
-                if let Some(file) = list.item(i).and_downcast::<gio::File>() {
-                    if let Some(p) = file.path() {
-                        paths.push(p.to_string_lossy().into_owned());
-                    }
+    dialog.open_multiple(Some(window), gio::Cancellable::NONE, move |result| {
+        let Ok(list) = result else { return };
+        let mut paths: Vec<String> = Vec::new();
+        for i in 0..list.n_items() {
+            if let Some(file) = list.item(i).and_downcast::<gio::File>() {
+                if let Some(p) = file.path() {
+                    paths.push(p.to_string_lossy().into_owned());
                 }
             }
-            if paths.is_empty() {
-                return;
-            }
-            let exe = std::env::current_exe()
-                .unwrap_or_else(|_| PathBuf::from("bigiris"));
-            let _ = std::process::Command::new(exe).args(&paths).spawn();
-        },
-    );
+        }
+        if paths.is_empty() {
+            return;
+        }
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("bigiris"));
+        let _ = std::process::Command::new(exe).args(&paths).spawn();
+    });
 }
 
 /// Copia a imagem corrente (pixels, não o path) pro clipboard do sistema.
@@ -1703,13 +1678,8 @@ fn copy_current_to_clipboard(state: &Rc<RefCell<ViewerState>>) {
     let (w, h) = rgba.dimensions();
     let stride = (w as usize) * 4;
     let bytes = glib::Bytes::from_owned(rgba.into_raw());
-    let tex = gdk::MemoryTexture::new(
-        w as i32,
-        h as i32,
-        gdk::MemoryFormat::R8g8b8a8,
-        &bytes,
-        stride,
-    );
+    let tex =
+        gdk::MemoryTexture::new(w as i32, h as i32, gdk::MemoryFormat::R8g8b8a8, &bytes, stride);
     window.clipboard().set_texture(&tex);
 }
 
@@ -1818,7 +1788,9 @@ fn trash_current(state: &Rc<RefCell<ViewerState>>) {
         .unwrap_or_else(|| path.display().to_string());
     let alert = adw::AlertDialog::builder()
         .heading("Mover para a lixeira?")
-        .body(format!("\"{name}\" será movido para a lixeira do sistema. Você pode restaurá-lo depois."))
+        .body(format!(
+            "\"{name}\" será movido para a lixeira do sistema. Você pode restaurá-lo depois."
+        ))
         .build();
     alert.add_response("cancel", "Cancelar");
     alert.add_response("trash", "Mover");
@@ -1898,28 +1870,19 @@ fn present_shortcuts_dialog(parent: &adw::ApplicationWindow) {
                 ("Delete", "Mover para a lixeira"),
             ],
         ),
-        (
-            "Ajuda",
-            &[("<ctrl>question", "Este diálogo"), ("F1", "Sobre")],
-        ),
+        ("Ajuda", &[("<ctrl>question", "Este diálogo"), ("F1", "Sobre")]),
     ];
     let section = gtk::ShortcutsSection::builder().section_name("viewer").build();
     for (group_title, entries) in shortcuts {
         let group = gtk::ShortcutsGroup::builder().title(group_title).build();
         for (accel, desc) in entries {
-            let sc = gtk::ShortcutsShortcut::builder()
-                .accelerator(*accel)
-                .title(*desc)
-                .build();
+            let sc = gtk::ShortcutsShortcut::builder().accelerator(*accel).title(*desc).build();
             group.append(&sc);
         }
         section.append(&group);
     }
-    let window = gtk::ShortcutsWindow::builder()
-        .modal(true)
-        .transient_for(parent)
-        .child(&section)
-        .build();
+    let window =
+        gtk::ShortcutsWindow::builder().modal(true).transient_for(parent).child(&section).build();
     window.present();
 }
 
@@ -1975,10 +1938,8 @@ fn build_dashboard(window: &adw::ApplicationWindow) -> gtk::Widget {
     // Feature cards — cada um abre um picker de imagens e relança o
     // próprio binário no modo certo (viewer, --dialog=batch, etc.).
     // Vai-e-volta evita reimplementar o pipeline em cima do dashboard.
-    let features = adw::PreferencesGroup::builder()
-        .title("O que dá pra fazer")
-        .margin_top(16)
-        .build();
+    let features =
+        adw::PreferencesGroup::builder().title("O que dá pra fazer").margin_top(16).build();
     for (title, subtitle, icon, action) in FEATURE_HIGHLIGHTS {
         let row = adw::ActionRow::builder()
             .title(*title)
@@ -2117,46 +2078,39 @@ fn dispatch_feature(window: &adw::ApplicationWindow, action: &'static str) {
 
     let parent = window.clone();
     let window = window.clone();
-    dialog.open_multiple(
-        Some(&parent),
-        None::<&gio::Cancellable>,
-        move |result| {
-            let Ok(files) = result else { return };
-            let paths: Vec<PathBuf> = (0..files.n_items())
-                .filter_map(|i| files.item(i))
-                .filter_map(|o| o.downcast::<gio::File>().ok())
-                .filter_map(|f| f.path())
-                .collect();
-            if paths.is_empty() {
-                return;
-            }
+    dialog.open_multiple(Some(&parent), None::<&gio::Cancellable>, move |result| {
+        let Ok(files) = result else { return };
+        let paths: Vec<PathBuf> = (0..files.n_items())
+            .filter_map(|i| files.item(i))
+            .filter_map(|o| o.downcast::<gio::File>().ok())
+            .filter_map(|f| f.path())
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
 
-            let Ok(exe) = std::env::current_exe() else { return };
-            let mut cmd = std::process::Command::new(exe);
-            match action {
-                "viewer" => {} // sem args: abre direto no visualizador
-                "remove-bg" => {
-                    cmd.arg("remove-bg");
-                }
-                other => {
-                    cmd.arg(format!("--dialog={other}"));
-                }
+        let Ok(exe) = std::env::current_exe() else { return };
+        let mut cmd = std::process::Command::new(exe);
+        match action {
+            "viewer" => {} // sem args: abre direto no visualizador
+            "remove-bg" => {
+                cmd.arg("remove-bg");
             }
-            cmd.args(paths.iter().map(|p| p.as_os_str()));
-            let _ = cmd.spawn();
-            window.close();
-        },
-    );
+            other => {
+                cmd.arg(format!("--dialog={other}"));
+            }
+        }
+        cmd.args(paths.iter().map(|p| p.as_os_str()));
+        let _ = cmd.spawn();
+        window.close();
+    });
 }
 
 /// File-chooser do dashboard: carrega uma lista de imagens e respawna o
 /// processo com esses arquivos para reusar a lógica de carregamento do
 /// CLI. Simples e previsível — evita duplicar o pipeline de load in-place.
 fn open_files_dialog(window: &adw::ApplicationWindow) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Selecionar imagens")
-        .modal(true)
-        .build();
+    let dialog = gtk::FileDialog::builder().title("Selecionar imagens").modal(true).build();
     // Filtro de imagens: tudo que o nosso decoder aguenta.
     let filter = gtk::FileFilter::new();
     filter.set_name(Some("Imagens"));
@@ -2180,31 +2134,25 @@ fn open_files_dialog(window: &adw::ApplicationWindow) {
 
     let window = window.clone();
     let parent = window.clone();
-    dialog.open_multiple(
-        Some(&parent),
-        None::<&gio::Cancellable>,
-        move |result| {
-            let Ok(files) = result else { return };
-            let paths: Vec<PathBuf> = (0..files.n_items())
-                .filter_map(|i| files.item(i))
-                .filter_map(|o| o.downcast::<gio::File>().ok())
-                .filter_map(|f| f.path())
-                .collect();
-            if paths.is_empty() {
-                return;
-            }
-            // Reaproveita o binário atual: relança com os caminhos, o que
-            // dispara o fluxo normal de viewer com lista de arquivos.
-            let args: Vec<std::ffi::OsString> =
-                paths.iter().map(|p| p.as_os_str().to_os_string()).collect();
-            if let Ok(exe) = std::env::current_exe() {
-                let _ = std::process::Command::new(exe)
-                    .args(&args)
-                    .spawn();
-                window.close();
-            }
-        },
-    );
+    dialog.open_multiple(Some(&parent), None::<&gio::Cancellable>, move |result| {
+        let Ok(files) = result else { return };
+        let paths: Vec<PathBuf> = (0..files.n_items())
+            .filter_map(|i| files.item(i))
+            .filter_map(|o| o.downcast::<gio::File>().ok())
+            .filter_map(|f| f.path())
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
+        // Reaproveita o binário atual: relança com os caminhos, o que
+        // dispara o fluxo normal de viewer com lista de arquivos.
+        let args: Vec<std::ffi::OsString> =
+            paths.iter().map(|p| p.as_os_str().to_os_string()).collect();
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).args(&args).spawn();
+            window.close();
+        }
+    });
 }
 
 fn refresh_title(state: &Rc<RefCell<ViewerState>>) {
@@ -2218,11 +2166,7 @@ fn refresh_title(state: &Rc<RefCell<ViewerState>>) {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string());
     // `•` à esquerda sinaliza edições pendentes. Convenção Loupe/TextEditor.
-    let name = if s.pending_ops.is_empty() {
-        base_name
-    } else {
-        format!("• {base_name}")
-    };
+    let name = if s.pending_ops.is_empty() { base_name } else { format!("• {base_name}") };
     let zoom_desc = match s.zoom {
         ZoomState::Fit => "Ajustar".to_string(),
         ZoomState::Scale(x) => format!("{}%", (x * 100.0).round() as i32),
@@ -2271,9 +2215,9 @@ fn compute_histogram(rgba: &[u8]) -> [u32; 768] {
 
 use bigimage_core::{
     adjust_file, convert_file, convert_file_to, crop_file, flip_file, make_gif, metadata,
-    resize_file, rotate_file, AdjustOps,
-    AnimateOptions, ConvertOutcome, CropRect, EncodeOptions, Filter, FlipAxis, Format, LoopMode,
-    OverwritePolicy, PreviewOp, PreviewSession, ResizeMode, Rotation,
+    resize_file, rotate_file, AdjustOps, AnimateOptions, ConvertOutcome, CropRect, EncodeOptions,
+    Filter, FlipAxis, Format, LoopMode, OverwritePolicy, PreviewOp, PreviewSession, ResizeMode,
+    Rotation,
 };
 use image::DynamicImage;
 use std::time::Duration;
@@ -3201,8 +3145,7 @@ fn decide_drag_mode(
     let (scale, ox, oy) = fit;
     let nat_w = natural.0 as f64;
     let nat_h = natural.1 as f64;
-    let click_nat =
-        (((sx - ox) / scale).clamp(0.0, nat_w), ((sy - oy) / scale).clamp(0.0, nat_h));
+    let click_nat = (((sx - ox) / scale).clamp(0.0, nat_w), ((sy - oy) / scale).clamp(0.0, nat_h));
 
     // Widget-space corners of the current rect.
     let corners_nat = [
@@ -3215,24 +3158,18 @@ fn decide_drag_mode(
         let (nx, ny) = corners_nat[i];
         (ox + nx * scale, oy + ny * scale)
     });
-    let tol2 =
-        CROP_HANDLE_TOLERANCE_WIDGET_PX * CROP_HANDLE_TOLERANCE_WIDGET_PX;
+    let tol2 = CROP_HANDLE_TOLERANCE_WIDGET_PX * CROP_HANDLE_TOLERANCE_WIDGET_PX;
     for (i, (cx, cy)) in corners_widget.iter().enumerate() {
         let d2 = (sx - cx).powi(2) + (sy - cy).powi(2);
         if d2 <= tol2 {
             let anchor_nat = corners_nat[3 - i];
-            return CropDragMode::ResizeCorner {
-                anchor_nat,
-                click_nat: corners_nat[i],
-            };
+            return CropDragMode::ResizeCorner { anchor_nat, click_nat: corners_nat[i] };
         }
     }
 
     // Inside the rect (strict) → move.
-    let inside = click_nat.0 > rx
-        && click_nat.0 < rx + rw
-        && click_nat.1 > ry
-        && click_nat.1 < ry + rh;
+    let inside =
+        click_nat.0 > rx && click_nat.0 < rx + rw && click_nat.1 > ry && click_nat.1 < ry + rh;
     if inside {
         return CropDragMode::Move { rect0: rect, click_nat };
     }
@@ -3270,10 +3207,7 @@ fn apply_drag(
             let new_y = (ry + dy).clamp(0.0, max_y);
             (new_x, new_y, rw, rh)
         }
-        CropDragMode::ResizeCorner {
-            anchor_nat: (ax, ay),
-            click_nat: (cx0, cy0),
-        } => {
+        CropDragMode::ResizeCorner { anchor_nat: (ax, ay), click_nat: (cx0, cy0) } => {
             let cx = (cx0 + dx).clamp(0.0, nat_w);
             let cy = (cy0 + dy).clamp(0.0, nat_h);
             let x0 = ax.min(cx);
@@ -3333,8 +3267,7 @@ fn build_crop_preview_column(
         selection_area.set_draw_func(move |_area, cr, ww, wh| {
             let ww = ww as f64;
             let wh = wh as f64;
-            let (scale, ox, oy) =
-                contain_fit(ww, wh, natural.0 as f64, natural.1 as f64);
+            let (scale, ox, oy) = contain_fit(ww, wh, natural.0 as f64, natural.1 as f64);
             let rx = ox + x_spin.value() * scale;
             let ry = oy + y_spin.value() * scale;
             let rw = w_spin.value() * scale;
@@ -3357,12 +3290,7 @@ fn build_crop_preview_column(
             // Corner handles — small squares to hint "drag me".
             cr.set_source_rgba(1.0, 1.0, 1.0, 1.0);
             let k = 5.0;
-            for (cx, cy) in [
-                (rx, ry),
-                (rx + rw, ry),
-                (rx, ry + rh),
-                (rx + rw, ry + rh),
-            ] {
+            for (cx, cy) in [(rx, ry), (rx + rw, ry), (rx, ry + rh), (rx + rw, ry + rh)] {
                 cr.rectangle(cx - k / 2.0, cy - k / 2.0, k, k);
             }
             let _ = cr.fill();
@@ -3400,12 +3328,7 @@ fn build_crop_preview_column(
             if scale <= 0.0 {
                 return;
             }
-            let rect = (
-                x_spin.value(),
-                y_spin.value(),
-                w_spin.value(),
-                h_spin.value(),
-            );
+            let rect = (x_spin.value(), y_spin.value(), w_spin.value(), h_spin.value());
             let decided = decide_drag_mode((sx, sy), rect, (scale, ox, oy), natural);
             mode.set(decided);
             if let CropDragMode::NewSelection { anchor_nat } = decided {
@@ -3435,8 +3358,7 @@ fn build_crop_preview_column(
             if scale <= 0.0 {
                 return;
             }
-            let (x0, y0, w, h) =
-                apply_drag(mode.get(), (dx / scale, dy / scale), natural);
+            let (x0, y0, w, h) = apply_drag(mode.get(), (dx / scale, dy / scale), natural);
             x_spin.set_value(x0);
             y_spin.set_value(y0);
             w_spin.set_value(w);
@@ -3590,9 +3512,7 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
     // the selection rect and shades the outside. Spin rows are the source of
     // truth; drag gestures update them and the overlay redraws.
     if let Some(sess) = preview_session.as_ref() {
-        let column = build_crop_preview_column(
-            sess, natural, &x_spin, &y_spin, &w_spin, &h_spin,
-        );
+        let column = build_crop_preview_column(sess, natural, &x_spin, &y_spin, &w_spin, &h_spin);
         content_h.append(&column);
     }
 
@@ -3715,10 +3635,8 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .build();
 
     let header = adw::HeaderBar::new();
-    header.set_title_widget(Some(&adw::WindowTitle::new(
-        "Aumentar resolução",
-        "Prisma · Lanczos3",
-    )));
+    header
+        .set_title_widget(Some(&adw::WindowTitle::new("Aumentar resolução", "Prisma · Lanczos3")));
 
     let content_h = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -3764,10 +3682,8 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .build();
 
     let factor_names: Vec<&str> = UPSCALE_FACTORS.iter().map(|(n, _)| *n).collect();
-    let factor_row = adw::ComboRow::builder()
-        .title("Fator")
-        .model(&gtk::StringList::new(&factor_names))
-        .build();
+    let factor_row =
+        adw::ComboRow::builder().title("Fator").model(&gtk::StringList::new(&factor_names)).build();
 
     let predicted_row = adw::ActionRow::builder().title("Destino previsto").subtitle("—").build();
     {
@@ -3896,8 +3812,7 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
             let apply_btn = apply_btn.clone();
             let cancel_btn = cancel_btn.clone();
             glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) =
-                    run_upscale_batch(&files, factor, target, policy);
+                let (ok, skip, fail, first_err) = run_upscale_batch(&files, factor, target, policy);
                 finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
             });
         });
@@ -4422,10 +4337,7 @@ fn build_properties_file_group(path: &Path) -> adw::PreferencesGroup {
     }
 
     if let Some(ext) = path.extension() {
-        group.add(&info_row(
-            "Formato",
-            &ext.to_string_lossy().to_uppercase(),
-        ));
+        group.add(&info_row("Formato", &ext.to_string_lossy().to_uppercase()));
     }
 
     match std::fs::metadata(path) {
@@ -4507,17 +4419,13 @@ fn format_bytes(n: u64) -> String {
 /// Formata um SystemTime em `YYYY-MM-DD HH:MM` local. Usa apenas a API
 /// padrão (sem pegar `chrono`) — basta pra mostrar a data legível.
 fn format_system_time(t: std::time::SystemTime) -> String {
-    let secs = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let secs = t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     // glib::DateTime lida com timezone local automaticamente — usamos ela
     // pra evitar reimplementar aritmética de calendário.
     match glib::DateTime::from_unix_local(secs) {
-        Ok(dt) => dt
-            .format("%Y-%m-%d %H:%M")
-            .map(|g| g.to_string())
-            .unwrap_or_else(|_| format!("{secs}")),
+        Ok(dt) => {
+            dt.format("%Y-%m-%d %H:%M").map(|g| g.to_string()).unwrap_or_else(|_| format!("{secs}"))
+        }
         Err(_) => format!("{secs}"),
     }
 }
@@ -4556,14 +4464,10 @@ fn build_compare_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
     let right_path = &files[1];
 
     let header = adw::HeaderBar::new();
-    let left_name = left_path
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let left_name =
+        left_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let right_name =
+        right_path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let title = adw::WindowTitle::new(
         "Comparar imagens",
         &format!("Antes: {left_name}  ·  Depois: {right_name}"),
@@ -4805,10 +4709,8 @@ fn build_batch_dialog(
         .margin_bottom(4)
         .build();
 
-    let apply_btn = gtk::Button::builder()
-        .label("Processar")
-        .css_classes(["pill", "suggested-action"])
-        .build();
+    let apply_btn =
+        gtk::Button::builder().label("Processar").css_classes(["pill", "suggested-action"]).build();
     let cancel_btn = gtk::Button::builder().label("Cancelar").build();
     let btn_bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     btn_bar.set_halign(gtk::Align::Center);
@@ -5006,12 +4908,7 @@ fn build_batch_dialog(
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| file.display().to_string());
-                progress.set_text(Some(&format!(
-                    "{}/{} · {}",
-                    idx + 1,
-                    total,
-                    display_name
-                )));
+                progress.set_text(Some(&format!("{}/{} · {}", idx + 1, total, display_name)));
 
                 let result =
                     convert_file_to(&file, out_dir_snapshot.as_deref(), fmt, &opts, policy);
@@ -5040,10 +4937,7 @@ fn build_batch_dialog(
 /// Atualiza a ActionRow de resumo do Prisma Lote com a contagem + peso
 /// total da lista atual de arquivos.
 fn refresh_files_row(row: &adw::ActionRow, files: &[PathBuf]) {
-    let total: u64 = files
-        .iter()
-        .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
-        .sum();
+    let total: u64 = files.iter().filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len())).sum();
     row.set_title(&format!("{} arquivo(s) selecionado(s)", files.len()));
     row.set_subtitle(&format_size(total));
 }
@@ -5056,10 +4950,7 @@ fn add_files_to_batch(
     files: &Rc<RefCell<Vec<PathBuf>>>,
     row: &adw::ActionRow,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Adicionar arquivos")
-        .modal(true)
-        .build();
+    let dialog = gtk::FileDialog::builder().title("Adicionar arquivos").modal(true).build();
     let filter = gtk::FileFilter::new();
     filter.set_name(Some("Imagens"));
     for mime in [
@@ -5083,23 +4974,19 @@ fn add_files_to_batch(
     let parent = window.clone();
     let files = files.clone();
     let row = row.clone();
-    dialog.open_multiple(
-        Some(&parent),
-        None::<&gio::Cancellable>,
-        move |result| {
-            let Ok(list) = result else { return };
-            let paths: Vec<PathBuf> = (0..list.n_items())
-                .filter_map(|i| list.item(i))
-                .filter_map(|o| o.downcast::<gio::File>().ok())
-                .filter_map(|f| f.path())
-                .collect();
-            if paths.is_empty() {
-                return;
-            }
-            append_unique(&files, paths);
-            refresh_files_row(&row, &files.borrow());
-        },
-    );
+    dialog.open_multiple(Some(&parent), None::<&gio::Cancellable>, move |result| {
+        let Ok(list) = result else { return };
+        let paths: Vec<PathBuf> = (0..list.n_items())
+            .filter_map(|i| list.item(i))
+            .filter_map(|o| o.downcast::<gio::File>().ok())
+            .filter_map(|f| f.path())
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
+        append_unique(&files, paths);
+        refresh_files_row(&row, &files.borrow());
+    });
 }
 
 /// Abre um picker de pasta e varre (não-recursivo, um nível só) em busca
@@ -5109,27 +4996,21 @@ fn add_folder_to_batch(
     files: &Rc<RefCell<Vec<PathBuf>>>,
     row: &adw::ActionRow,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Adicionar pasta com imagens")
-        .modal(true)
-        .build();
+    let dialog =
+        gtk::FileDialog::builder().title("Adicionar pasta com imagens").modal(true).build();
     let parent = window.clone();
     let files = files.clone();
     let row = row.clone();
-    dialog.select_folder(
-        Some(&parent),
-        None::<&gio::Cancellable>,
-        move |result| {
-            let Ok(folder) = result else { return };
-            let Some(dir) = folder.path() else { return };
-            let found = collect_images_in_dir(&dir);
-            if found.is_empty() {
-                return;
-            }
-            append_unique(&files, found);
-            refresh_files_row(&row, &files.borrow());
-        },
-    );
+    dialog.select_folder(Some(&parent), None::<&gio::Cancellable>, move |result| {
+        let Ok(folder) = result else { return };
+        let Some(dir) = folder.path() else { return };
+        let found = collect_images_in_dir(&dir);
+        if found.is_empty() {
+            return;
+        }
+        append_unique(&files, found);
+        refresh_files_row(&row, &files.borrow());
+    });
 }
 
 /// Adiciona novos paths à lista, pulando os que já estavam lá
@@ -5144,9 +5025,8 @@ fn append_unique(files: &Rc<RefCell<Vec<PathBuf>>>, new_paths: Vec<PathBuf>) {
 }
 
 /// Extensões que aceitamos numa varredura de pasta. Case-insensitive.
-const IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "webp", "avif", "gif", "tif", "tiff", "bmp", "heic", "heif", "jxl",
-];
+const IMAGE_EXTENSIONS: &[&str] =
+    &["jpg", "jpeg", "png", "webp", "avif", "gif", "tif", "tiff", "bmp", "heic", "heif", "jxl"];
 
 fn collect_images_in_dir(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
@@ -5174,25 +5054,18 @@ fn pick_output_folder(
     row: &adw::ActionRow,
     clear_btn: &gtk::Button,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Escolher pasta de saída")
-        .modal(true)
-        .build();
+    let dialog = gtk::FileDialog::builder().title("Escolher pasta de saída").modal(true).build();
     let parent = window.clone();
     let output_dir = output_dir.clone();
     let row = row.clone();
     let clear_btn = clear_btn.clone();
-    dialog.select_folder(
-        Some(&parent),
-        None::<&gio::Cancellable>,
-        move |result| {
-            let Ok(folder) = result else { return };
-            let Some(path) = folder.path() else { return };
-            row.set_subtitle(&path.display().to_string());
-            *output_dir.borrow_mut() = Some(path);
-            clear_btn.set_visible(true);
-        },
-    );
+    dialog.select_folder(Some(&parent), None::<&gio::Cancellable>, move |result| {
+        let Ok(folder) = result else { return };
+        let Some(path) = folder.path() else { return };
+        row.set_subtitle(&path.display().to_string());
+        *output_dir.borrow_mut() = Some(path);
+        clear_btn.set_visible(true);
+    });
 }
 
 /// Humaniza um tamanho em bytes para algo como "2.3 GB" ou "842 KB".
@@ -5410,8 +5283,7 @@ fn remove_bg_one_file_with_progress(
     let out = bigimage_ai::background::remove_background_with_progress(&img, progress)
         .map_err(|e| e.to_string())?;
     let dest = nobg_output_path(src);
-    out.save_with_format(&dest, image::ImageFormat::Png)
-        .map_err(|e| format!("encode: {e}"))?;
+    out.save_with_format(&dest, image::ImageFormat::Png).map_err(|e| format!("encode: {e}"))?;
     Ok(dest)
 }
 
@@ -5453,7 +5325,8 @@ fn build_remove_bg_dialog(
         .build();
 
     let header = adw::HeaderBar::new();
-    header.set_title_widget(Some(&adw::WindowTitle::new("Remover fundo", "Prisma · BiRefNet-lite")));
+    header
+        .set_title_widget(Some(&adw::WindowTitle::new("Remover fundo", "Prisma · BiRefNet-lite")));
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -5542,11 +5415,8 @@ fn build_remove_bg_dialog(
 
     // Progress bar — hidden until the user clicks Remover fundo. Shows
     // download bytes on first run, then per-file inference progress.
-    let progress_bar = gtk::ProgressBar::builder()
-        .show_text(true)
-        .visible(false)
-        .margin_top(6)
-        .build();
+    let progress_bar =
+        gtk::ProgressBar::builder().show_text(true).visible(false).margin_top(6).build();
     content.append(&progress_bar);
 
     let status = gtk::Label::builder().label("").wrap(true).xalign(0.0).build();
@@ -5735,9 +5605,7 @@ fn build_remove_bg_dialog(
                             }
                         } else {
                             let detail = first_err.unwrap_or_default();
-                            status.set_text(&format!(
-                                "{ok} ok, {fail} falha(s). Último: {detail}"
-                            ));
+                            status.set_text(&format!("{ok} ok, {fail} falha(s). Último: {detail}"));
                             progress_bar.set_text(Some("Com erros"));
                             progress_bar.add_css_class("error");
                             apply_btn.set_sensitive(true);
@@ -5759,11 +5627,8 @@ fn build_remove_bg_dialog(
 /// sees original vs. result side-by-side.
 fn spawn_compare_viewer(original: &Path, result: &Path) {
     let Ok(exe) = std::env::current_exe() else { return };
-    let _ = std::process::Command::new(exe)
-        .arg("--dialog=compare")
-        .arg(original)
-        .arg(result)
-        .spawn();
+    let _ =
+        std::process::Command::new(exe).arg("--dialog=compare").arg(original).arg(result).spawn();
 }
 
 #[cfg(test)]
@@ -5922,7 +5787,7 @@ mod anchor_tests {
         // Widget 400×400, image 200×200 at scale 2, centered (ox=oy=0).
         // Rect at (50,50,100,100) natural → widget corners at (100,100)..(300,300).
         let mode = decide_drag_mode(
-            (98.0, 102.0),           // ~2px from top-left handle
+            (98.0, 102.0), // ~2px from top-left handle
             (50.0, 50.0, 100.0, 100.0),
             (2.0, 0.0, 0.0),
             (200, 200),
@@ -5973,10 +5838,8 @@ mod anchor_tests {
     #[test]
     fn apply_drag_move_preserves_size_and_clamps() {
         use super::{apply_drag, CropDragMode};
-        let mode = CropDragMode::Move {
-            rect0: (50.0, 50.0, 100.0, 100.0),
-            click_nat: (100.0, 100.0),
-        };
+        let mode =
+            CropDragMode::Move { rect0: (50.0, 50.0, 100.0, 100.0), click_nat: (100.0, 100.0) };
         // Small move → shift preserved.
         let r = apply_drag(mode, (10.0, -20.0), (200, 200));
         assert_eq!(r, (60.0, 30.0, 100.0, 100.0));
@@ -5989,10 +5852,8 @@ mod anchor_tests {
     fn apply_drag_resize_corner_anchors_opposite() {
         use super::{apply_drag, CropDragMode};
         // Anchor is bottom-right (150,150); click started top-left (50,50).
-        let mode = CropDragMode::ResizeCorner {
-            anchor_nat: (150.0, 150.0),
-            click_nat: (50.0, 50.0),
-        };
+        let mode =
+            CropDragMode::ResizeCorner { anchor_nat: (150.0, 150.0), click_nat: (50.0, 50.0) };
         // Move click corner by (+20, +10) in natural pixels.
         let r = apply_drag(mode, (20.0, 10.0), (200, 200));
         // New click = (70, 60); rect becomes (70, 60, 80, 90).
@@ -6009,8 +5870,7 @@ mod anchor_tests {
         RgbImage::from_pixel(30, 20, Rgb([10, 20, 30])).save(&path).unwrap();
 
         let files = vec![path];
-        let (ok, skip, fail, err) =
-            run_upscale_batch(&files, 2, None, OverwritePolicy::Replace);
+        let (ok, skip, fail, err) = run_upscale_batch(&files, 2, None, OverwritePolicy::Replace);
         assert_eq!((ok, skip, fail), (1, 0, 0), "err={err:?}");
 
         // Output name follows resize's Percent suffix: "_200pct".

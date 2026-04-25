@@ -62,9 +62,7 @@ pub(crate) fn resolve_output_to(
     let stem = input
         .file_stem()
         .ok_or_else(|| BigImageError::InvalidInput(format!("no file stem in {input:?}")))?;
-    let parent = output_dir
-        .or_else(|| input.parent())
-        .unwrap_or_else(|| Path::new("."));
+    let parent = output_dir.or_else(|| input.parent()).unwrap_or_else(|| Path::new("."));
     let ext = target.extension();
     let suffix = suffix.unwrap_or("");
 

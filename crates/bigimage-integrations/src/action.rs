@@ -107,8 +107,7 @@ pub const SUB_AI: Submenu =
 
 /// Submenu: converter documento → PDF via LibreOffice. Só aparece quando
 /// a seleção bate em [`DOC_MIME`] — em imagens o usuário usa Convert ▸.
-pub const SUB_PDF: Submenu =
-    Submenu { id: "pdf", label: "PDF", icon: "application-pdf-symbolic" };
+pub const SUB_PDF: Submenu = Submenu { id: "pdf", label: "PDF", icon: "application-pdf-symbolic" };
 
 /// All actions to install, in a display-friendly order.
 ///

@@ -51,13 +51,29 @@ jobs:
       - run: cargo clippy -p bigiris --features "gui ai" --all-targets --locked -- -D warnings
 
   test:
-    name: test
+    name: test (headless)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-targets --locked
+
+  test-gui:
+    name: test (gui + ai)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install GTK4/libadwaita/dav1d dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libdav1d-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Tests in `crates/bigiris/src/gui.rs` (the 20 anchor/zoom tests)
+      # only compile with `--features gui`, so they need their own job.
+      - run: cargo test -p bigiris --features "gui ai" --all-targets --locked
 
   build:
     name: build (release, gui + ai)

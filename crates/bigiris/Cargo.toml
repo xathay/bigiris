@@ -32,10 +32,12 @@ image.workspace = true
 tempfile = "3"
 
 [features]
-default = ["gui"]
+# Off by default so CI and headless builds stay lean (no GTK/libadwaita
+# system libs required). The PKGBUILD and README install instructions
+# pass `--features "gui ai"` explicitly for end-user installs.
+default = []
 # Enable AI backend (ORT + models). Requires `onnxruntime` at runtime
 # (Arch: `pacman -S onnxruntime`).
 ai = ["bigimage-ai/onnx"]
-# Enable GTK4 / libadwaita viewer. Off by default so CI and headless
-# builds stay lean; ships turned on in the PKGBUILD.
+# Enable GTK4 / libadwaita viewer.
 gui = ["dep:gtk4", "dep:libadwaita"]

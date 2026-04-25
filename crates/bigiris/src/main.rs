@@ -658,9 +658,7 @@ fn remove_bg_one(path: &std::path::Path) -> color_eyre::Result<PathBuf> {
 /// `--engine ai`, reusando a mesma API de saída.
 fn run_upscale(factor: u8, policy: OverwritePolicy, files: &[PathBuf]) -> color_eyre::Result<()> {
     if !(2..=4).contains(&factor) {
-        return Err(color_eyre::eyre::eyre!(
-            "fator inválido: {factor}. Use 2, 3 ou 4."
-        ));
+        return Err(color_eyre::eyre::eyre!("fator inválido: {factor}. Use 2, 3 ou 4."));
     }
     let percent = f32::from(factor) * 100.0;
     let mode = ResizeMode::Percent(percent);
@@ -729,7 +727,11 @@ fn run_to_pdf(files: &[PathBuf]) -> color_eyre::Result<()> {
         match status {
             Ok(s) if s.success() => {
                 ok += 1;
-                println!("ok  {} → {}.pdf", file.display(), file.file_stem().unwrap_or_default().to_string_lossy());
+                println!(
+                    "ok  {} → {}.pdf",
+                    file.display(),
+                    file.file_stem().unwrap_or_default().to_string_lossy()
+                );
             }
             Ok(s) => {
                 fail += 1;
