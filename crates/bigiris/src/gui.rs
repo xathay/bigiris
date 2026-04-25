@@ -4502,18 +4502,27 @@ fn make_compare_side(path: &Path) -> gtk::Box {
 // something playable.
 // ---------------------------------------------------------------------------
 
-/// Open the "Criar GIF animado" modal. Needs 2+ frames; falls back to an
-/// error page when fewer.
-/// Progress state for the batch dialog — updated per-file by the
-/// idle-driven loop and read by the UI to paint the progress bar.
-struct BatchProgress {
-    total: usize,
-    done: usize,
-    ok: usize,
-    skip: usize,
-    fail: usize,
-    first_err: Option<String>,
-    cancelled: bool,
+/// Progress event for the batch dialog. Emitted from the worker thread
+/// over an mpsc channel; the timeout poll on the main loop translates
+/// each variant into widget updates.
+enum BatchTick {
+    /// Worker just started processing file `idx + 1` of `total`. `file`
+    /// is the bare display name (no directory) for the progress bar.
+    Started { idx: usize, total: usize, file: String },
+    /// File `done`/`total` finished. The poll uses this to advance the
+    /// progress fraction without waiting for the next Started message.
+    Finished { done: usize, total: usize },
+    /// Worker exited (cleanly or via cancel). Carries the summary the
+    /// dialog renders in the status row.
+    Done {
+        ok: usize,
+        skip: usize,
+        fail: usize,
+        first_err: Option<String>,
+        done: usize,
+        total: usize,
+        cancelled: bool,
+    },
 }
 
 /// Prisma Lote — converter em lote. Pega a lista de arquivos recebida via
@@ -4679,17 +4688,12 @@ fn build_batch_dialog(
     toolbar_view.set_content(Some(&main_col));
     window.set_content(Some(&toolbar_view));
 
-    // Estado partilhado entre UI e worker de progresso. RefCell em Rc é
-    // suficiente — processamos no main thread um arquivo por idle tick.
-    let progress_state: Rc<RefCell<BatchProgress>> = Rc::new(RefCell::new(BatchProgress {
-        total: files.borrow().len(),
-        done: 0,
-        ok: 0,
-        skip: 0,
-        fail: 0,
-        first_err: None,
-        cancelled: false,
-    }));
+    // Cancel signal shared with the worker thread — flipped by the
+    // Cancel button while a run is in flight, reset on each Apply.
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // True while a worker is running. The Cancel button uses this to
+    // decide between "cancel the run" and "close the window".
+    let running = Rc::new(Cell::new(false));
 
     // Handlers dos botões "Adicionar arquivos" e "Adicionar pasta".
     {
@@ -4732,15 +4736,12 @@ fn build_batch_dialog(
     }
 
     {
-        let state = progress_state.clone();
+        let cancelled = cancelled.clone();
+        let running = running.clone();
         let window = window.clone();
         cancel_btn.connect_clicked(move |_| {
-            let is_running = {
-                let s = state.borrow();
-                s.done < s.total && !s.cancelled
-            };
-            if is_running {
-                state.borrow_mut().cancelled = true;
+            if running.get() {
+                cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
             } else {
                 window.close();
             }
@@ -4759,7 +4760,8 @@ fn build_batch_dialog(
         let apply_btn = apply_btn.clone();
         let cancel_btn = cancel_btn.clone();
         let window = window.clone();
-        let progress_state = progress_state.clone();
+        let cancelled = cancelled.clone();
+        let running = running.clone();
         let output_dir = output_dir.clone();
         apply_btn.clone().connect_clicked(move |_| {
             let fmt_idx = format_row.selected() as usize;
@@ -4773,95 +4775,116 @@ fn build_batch_dialog(
                 ..EncodeOptions::default()
             };
             let out_dir_snapshot = output_dir.borrow().clone();
+            let files_owned: Vec<PathBuf> = files.borrow().clone();
+            let total = files_owned.len();
 
-            // Reset state for a re-run; total recomputed from the live list.
-            {
-                let mut s = progress_state.borrow_mut();
-                s.total = files.borrow().len();
-                s.done = 0;
-                s.ok = 0;
-                s.skip = 0;
-                s.fail = 0;
-                s.first_err = None;
-                s.cancelled = false;
-            }
+            // Reset cancel for a re-run, mark a worker as live.
+            cancelled.store(false, std::sync::atomic::Ordering::Relaxed);
+            running.set(true);
             apply_btn.set_sensitive(false);
+            cancel_btn.set_label(&gettext("Cancelar"));
             progress.set_fraction(0.0);
             progress.set_text(Some(&gettext("Iniciando…")));
             status.set_text(&gettext("Processando…"));
 
-            // Processa 1 arquivo por idle tick — UI continua responsiva,
-            // Cancelar efetivo a cada iteração. Não é thread-pool (single
-            // threaded), mas é correto e simples para o MVP.
-            let files = files.clone();
+            // Worker thread runs the entire batch off the GTK main loop.
+            // Progress flows back as `BatchTick` messages; the timeout
+            // poll on the main loop translates them into widget updates.
+            let (tx, rx) = std::sync::mpsc::channel::<BatchTick>();
+            let cancelled_w = cancelled.clone();
+            std::thread::spawn(move || {
+                let mut ok = 0usize;
+                let mut skip = 0usize;
+                let mut fail = 0usize;
+                let mut first_err: Option<String> = None;
+                let mut done_count = 0usize;
+                for (idx, f) in files_owned.iter().enumerate() {
+                    if cancelled_w.load(std::sync::atomic::Ordering::Relaxed) {
+                        break;
+                    }
+                    let display_name = f
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| f.display().to_string());
+                    let _ = tx.send(BatchTick::Started { idx, total, file: display_name });
+                    match convert_file_to(f, out_dir_snapshot.as_deref(), fmt, &opts, policy) {
+                        Ok(ConvertOutcome::Written { .. }) => ok += 1,
+                        Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
+                        Err(e) => {
+                            fail += 1;
+                            if first_err.is_none() {
+                                first_err = Some(format!("{}: {e}", f.display()));
+                            }
+                        }
+                    }
+                    done_count += 1;
+                    let _ = tx.send(BatchTick::Finished { done: done_count, total });
+                }
+                let was_cancelled = cancelled_w.load(std::sync::atomic::Ordering::Relaxed);
+                let _ = tx.send(BatchTick::Done {
+                    ok,
+                    skip,
+                    fail,
+                    first_err,
+                    done: done_count,
+                    total,
+                    cancelled: was_cancelled,
+                });
+            });
+
             let progress = progress.clone();
             let status = status.clone();
             let apply_btn = apply_btn.clone();
             let cancel_btn = cancel_btn.clone();
             let window = window.clone();
-            let progress_state = progress_state.clone();
-            glib::idle_add_local(move || {
-                let (idx, cancelled) = {
-                    let s = progress_state.borrow();
-                    (s.done, s.cancelled)
-                };
-                let total = files.borrow().len();
-                if cancelled || idx >= total {
-                    let s = progress_state.borrow();
-                    let msg = if s.cancelled {
-                        format!(
-                            "Cancelado após {}/{}. {} gravado(s), {} ignorado(s), {} falha(s).",
-                            s.done, s.total, s.ok, s.skip, s.fail
-                        )
-                    } else {
-                        format!(
-                            "Concluído. {} gravado(s), {} ignorado(s), {} falha(s).",
-                            s.ok, s.skip, s.fail
-                        )
-                    };
-                    status.set_text(&msg);
-                    if let Some(err) = &s.first_err {
-                        status.set_text(&format!("{msg}\n{err}"));
+            let running = running.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || loop {
+                match rx.try_recv() {
+                    Ok(BatchTick::Started { idx, total, file }) => {
+                        progress.set_text(Some(&format!("{}/{} · {}", idx + 1, total, file)));
                     }
-                    progress.set_text(Some(if s.cancelled { "Cancelado" } else { "Concluído" }));
-                    apply_btn.set_sensitive(true);
-                    cancel_btn.set_label(if s.done == s.total && !s.cancelled {
-                        "Fechar"
-                    } else {
-                        "Cancelar"
-                    });
-                    // Auto-close em sucesso limpo
-                    if !s.cancelled && s.fail == 0 {
-                        let win = window.clone();
-                        glib::timeout_add_seconds_local_once(3, move || win.close());
+                    Ok(BatchTick::Finished { done, total }) => {
+                        progress.set_fraction(done as f64 / total.max(1) as f64);
                     }
-                    return glib::ControlFlow::Break;
-                }
-
-                let file = files.borrow()[idx].clone();
-                let display_name = file
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| file.display().to_string());
-                progress.set_text(Some(&format!("{}/{} · {}", idx + 1, total, display_name)));
-
-                let result =
-                    convert_file_to(&file, out_dir_snapshot.as_deref(), fmt, &opts, policy);
-                match result {
-                    Ok(ConvertOutcome::Written { .. }) => progress_state.borrow_mut().ok += 1,
-                    Ok(ConvertOutcome::Skipped { .. }) => progress_state.borrow_mut().skip += 1,
-                    Err(e) => {
-                        let mut s = progress_state.borrow_mut();
-                        s.fail += 1;
-                        if s.first_err.is_none() {
-                            s.first_err = Some(format!("{}: {e}", file.display()));
+                    Ok(BatchTick::Done { ok, skip, fail, first_err, done, total, cancelled }) => {
+                        running.set(false);
+                        let msg = if cancelled {
+                            format!(
+                                "Cancelado após {done}/{total}. {ok} gravado(s), \
+                                     {skip} ignorado(s), {fail} falha(s)."
+                            )
+                        } else {
+                            format!(
+                                "Concluído. {ok} gravado(s), {skip} ignorado(s), \
+                                     {fail} falha(s)."
+                            )
+                        };
+                        status.set_text(&msg);
+                        if let Some(err) = first_err {
+                            status.set_text(&format!("{msg}\n{err}"));
                         }
+                        progress.set_text(Some(if cancelled { "Cancelado" } else { "Concluído" }));
+                        apply_btn.set_sensitive(true);
+                        let cancel_label = if !cancelled && done == total {
+                            "Fechar".to_string()
+                        } else {
+                            gettext("Cancelar")
+                        };
+                        cancel_btn.set_label(&cancel_label);
+                        if !cancelled && fail == 0 {
+                            let win = window.clone();
+                            glib::timeout_add_seconds_local_once(3, move || win.close());
+                        }
+                        return glib::ControlFlow::Break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        return glib::ControlFlow::Continue;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        running.set(false);
+                        return glib::ControlFlow::Break;
                     }
                 }
-                let mut s = progress_state.borrow_mut();
-                s.done += 1;
-                progress.set_fraction(s.done as f64 / s.total.max(1) as f64);
-                glib::ControlFlow::Continue
             });
         });
     }
@@ -5172,24 +5195,35 @@ fn build_animate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Montando GIF…"));
 
-            let files = files.clone();
+            // Worker thread runs make_gif (encoding 100 frames at 4K can
+            // take several seconds); main loop polls a oneshot channel
+            // for the result. Window stays responsive throughout.
+            let (tx, rx) = std::sync::mpsc::channel();
+            let files_owned: Vec<PathBuf> = (*files).clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(make_gif(&files_owned, &output, opts));
+            });
+
             let status = status.clone();
             let window = window.clone();
             let apply_btn = apply_btn.clone();
             let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let result = make_gif(&files, &output, opts);
-                match result {
-                    Ok(path) => {
+            glib::timeout_add_local(std::time::Duration::from_millis(80), move || {
+                match rx.try_recv() {
+                    Ok(Ok(path)) => {
                         status.set_text(&format!("Pronto: {}", path.display()));
                         let w = window.clone();
                         glib::timeout_add_seconds_local_once(2, move || w.close());
+                        glib::ControlFlow::Break
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         status.set_text(&format!("Falha: {e}"));
                         apply_btn.set_sensitive(true);
                         cancel_btn.set_sensitive(true);
+                        glib::ControlFlow::Break
                     }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
                 }
             });
         });
