@@ -2525,15 +2525,16 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Convertendo…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) = run_convert_batch(&files, fmt, &opts, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            let work_files: Vec<PathBuf> = (*files).clone();
+            run_batch_async(
+                work_files,
+                move |f| convert_file(f, fmt, &opts, policy),
+                gettext("Convertendo"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
@@ -2835,16 +2836,16 @@ fn build_resize_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Redimensionando…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) =
-                    run_resize_batch(&files, mode, filter, target, &opts, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            let work_files: Vec<PathBuf> = (*files).clone();
+            run_batch_async(
+                work_files,
+                move |f| resize_file(f, mode, filter, target, &opts, policy),
+                gettext("Redimensionando"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
@@ -2861,58 +2862,6 @@ fn files_subtitle(files: &[PathBuf]) -> String {
     } else {
         format!("{first} +{} outros", files.len() - 1)
     }
-}
-
-fn run_convert_batch(
-    files: &[PathBuf],
-    target: Format,
-    opts: &EncodeOptions,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mut ok = 0usize;
-    let mut skip = 0usize;
-    let mut fail = 0usize;
-    let mut first_err: Option<String> = None;
-    for f in files {
-        match convert_file(f, target, opts, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
-}
-
-fn run_resize_batch(
-    files: &[PathBuf],
-    mode: ResizeMode,
-    filter: Filter,
-    target: Option<Format>,
-    opts: &EncodeOptions,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mut ok = 0usize;
-    let mut skip = 0usize;
-    let mut fail = 0usize;
-    let mut first_err: Option<String> = None;
-    for f in files {
-        match resize_file(f, mode, filter, target, opts, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2939,6 +2888,107 @@ fn finish_dialog(
         let window = window.clone();
         glib::timeout_add_seconds_local_once(2, move || window.close());
     }
+}
+
+/// Progress message sent from the worker thread to the UI poll.
+enum AsyncBatchEvent {
+    /// About to process file `idx + 1` of `total`. `file` is the bare
+    /// file name (no directory) for display.
+    Tick { idx: usize, total: usize, file: String },
+    /// Worker is done. Pass the same shape `finish_dialog` consumes.
+    Done { ok: usize, skip: usize, fail: usize, first_err: Option<String> },
+}
+
+/// Run a per-file batch on a worker thread, polling progress on the main
+/// loop at 20 Hz. The `work` closure is the per-file CPU op (e.g.
+/// `convert_file`); it must be `Send + 'static` so the thread can take it.
+/// Widgets (`status`, buttons, window) stay on the main thread — they're
+/// only touched inside the timeout closure, which runs locally.
+///
+/// Cancellation: closing the window flips an atomic flag the worker checks
+/// between files. The current file finishes (we can't interrupt a decode
+/// mid-flight today), but the rest of the batch is skipped cleanly.
+///
+/// Replaces the previous `idle_add_local_once(|| run_X_batch(...); finish_dialog(...))`
+/// pattern that ran the entire batch on the main thread, freezing the UI
+/// for the duration. With this in place the user can drag the window,
+/// scroll, see "Convertendo 12/50 — foo.jpg" updating live, and close the
+/// dialog mid-batch without GTK marking the app "Not responding".
+#[allow(clippy::too_many_arguments)]
+fn run_batch_async<W>(
+    files: Vec<PathBuf>,
+    mut work: W,
+    busy_label: String,
+    status: gtk::Label,
+    apply_btn: gtk::Button,
+    cancel_btn: gtk::Button,
+    window: adw::ApplicationWindow,
+) where
+    W: FnMut(&Path) -> bigimage_core::Result<ConvertOutcome> + Send + 'static,
+{
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+    use std::sync::Arc;
+
+    let (tx, rx) = mpsc::channel::<AsyncBatchEvent>();
+    let cancelled = Arc::new(AtomicBool::new(false));
+
+    {
+        let cancelled = cancelled.clone();
+        window.connect_close_request(move |_| {
+            cancelled.store(true, Ordering::Relaxed);
+            glib::Propagation::Proceed
+        });
+    }
+
+    {
+        let cancelled = cancelled.clone();
+        std::thread::spawn(move || {
+            let mut ok = 0usize;
+            let mut skip = 0usize;
+            let mut fail = 0usize;
+            let mut first_err: Option<String> = None;
+            let total = files.len();
+            for (idx, f) in files.iter().enumerate() {
+                if cancelled.load(Ordering::Relaxed) {
+                    break;
+                }
+                let _ = tx.send(AsyncBatchEvent::Tick {
+                    idx,
+                    total,
+                    file: f
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                });
+                match work(f) {
+                    Ok(ConvertOutcome::Written { .. }) => ok += 1,
+                    Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
+                    Err(e) => {
+                        fail += 1;
+                        if first_err.is_none() {
+                            first_err = Some(format!("{}: {e}", f.display()));
+                        }
+                    }
+                }
+            }
+            let _ = tx.send(AsyncBatchEvent::Done { ok, skip, fail, first_err });
+        });
+    }
+
+    glib::timeout_add_local(std::time::Duration::from_millis(50), move || loop {
+        match rx.try_recv() {
+            Ok(AsyncBatchEvent::Tick { idx, total, file }) => {
+                status.set_text(&format!("{busy_label} {}/{} — {}", idx + 1, total, file));
+            }
+            Ok(AsyncBatchEvent::Done { ok, skip, fail, first_err }) => {
+                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
+                return glib::ControlFlow::Break;
+            }
+            Err(mpsc::TryRecvError::Empty) => return glib::ControlFlow::Continue,
+            Err(mpsc::TryRecvError::Disconnected) => return glib::ControlFlow::Break,
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -3060,45 +3110,20 @@ fn build_rotate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Girando…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) =
-                    run_rotate_batch(&files, rotation, target, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            let work_files: Vec<PathBuf> = (*files).clone();
+            run_batch_async(
+                work_files,
+                move |f| rotate_file(f, rotation, target, policy),
+                gettext("Girando"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
     window
-}
-
-fn run_rotate_batch(
-    files: &[PathBuf],
-    rotation: Rotation,
-    target: Option<Format>,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mut ok = 0;
-    let mut skip = 0;
-    let mut fail = 0;
-    let mut first_err = None;
-    for f in files {
-        match rotate_file(f, rotation, target, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
 }
 
 /// Default crop: a centred 50% rectangle — a safe non-empty starting
@@ -3574,44 +3599,20 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Recortando…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) = run_crop_batch(&files, rect, target, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            let work_files: Vec<PathBuf> = (*files).clone();
+            run_batch_async(
+                work_files,
+                move |f| crop_file(f, rect, target, policy),
+                gettext("Recortando"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
     window
-}
-
-fn run_crop_batch(
-    files: &[PathBuf],
-    rect: CropRect,
-    target: Option<Format>,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mut ok = 0;
-    let mut skip = 0;
-    let mut fail = 0;
-    let mut first_err = None;
-    for f in files {
-        match crop_file(f, rect, target, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
 }
 
 /// Upscale factors we expose in the dialog — matches the CLI `--factor` range
@@ -3810,46 +3811,23 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Aumentando…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) = run_upscale_batch(&files, factor, target, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            // Upscale = Lanczos3 resize at factor * 100 %.
+            let work_files: Vec<PathBuf> = (*files).clone();
+            let mode = ResizeMode::Percent(f32::from(factor) * 100.0);
+            let opts = EncodeOptions::default();
+            run_batch_async(
+                work_files,
+                move |f| resize_file(f, mode, Filter::Lanczos3, target, &opts, policy),
+                gettext("Aumentando"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
     window
-}
-
-fn run_upscale_batch(
-    files: &[PathBuf],
-    factor: u8,
-    target: Option<Format>,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mode = ResizeMode::Percent(f32::from(factor) * 100.0);
-    let opts = EncodeOptions::default();
-    let mut ok = 0;
-    let mut skip = 0;
-    let mut fail = 0;
-    let mut first_err = None;
-    for f in files {
-        match resize_file(f, mode, Filter::Lanczos3, target, &opts, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
 }
 
 /// Flip modal: horizontal or vertical mirror.
@@ -3965,44 +3943,20 @@ fn build_flip_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Espelhando…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) = run_flip_batch(&files, axis, target, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            let work_files: Vec<PathBuf> = (*files).clone();
+            run_batch_async(
+                work_files,
+                move |f| flip_file(f, axis, target, policy),
+                gettext("Espelhando"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
     window
-}
-
-fn run_flip_batch(
-    files: &[PathBuf],
-    axis: FlipAxis,
-    target: Option<Format>,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mut ok = 0;
-    let mut skip = 0;
-    let mut fail = 0;
-    let mut first_err = None;
-    for f in files {
-        match flip_file(f, axis, target, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
 }
 
 /// Adjust modal: brightness + contrast + saturation + gamma.
@@ -4215,44 +4169,20 @@ fn build_adjust_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
             cancel_btn.set_sensitive(false);
             status.set_text(&gettext("Ajustando…"));
 
-            let files = files.clone();
-            let status = status.clone();
-            let window = window.clone();
-            let apply_btn = apply_btn.clone();
-            let cancel_btn = cancel_btn.clone();
-            glib::idle_add_local_once(move || {
-                let (ok, skip, fail, first_err) = run_adjust_batch(&files, ops, target, policy);
-                finish_dialog(&status, &apply_btn, &cancel_btn, &window, ok, skip, fail, first_err);
-            });
+            let work_files: Vec<PathBuf> = (*files).clone();
+            run_batch_async(
+                work_files,
+                move |f| adjust_file(f, ops, target, policy),
+                gettext("Ajustando"),
+                status.clone(),
+                apply_btn.clone(),
+                cancel_btn.clone(),
+                window.clone(),
+            );
         });
     }
 
     window
-}
-
-fn run_adjust_batch(
-    files: &[PathBuf],
-    ops: AdjustOps,
-    target: Option<Format>,
-    policy: OverwritePolicy,
-) -> (usize, usize, usize, Option<String>) {
-    let mut ok = 0;
-    let mut skip = 0;
-    let mut fail = 0;
-    let mut first_err = None;
-    for f in files {
-        match adjust_file(f, ops, target, policy) {
-            Ok(ConvertOutcome::Written { .. }) => ok += 1,
-            Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
-            Err(e) => {
-                fail += 1;
-                if first_err.is_none() {
-                    first_err = Some(format!("{}: {e}", f.display()));
-                }
-            }
-        }
-    }
-    (ok, skip, fail, first_err)
 }
 
 // ---------------------------------------------------------------------------
@@ -5871,17 +5801,30 @@ mod anchor_tests {
     }
 
     #[test]
-    fn upscale_batch_doubles_dimensions_lanczos() {
-        use super::run_upscale_batch;
-        use bigimage_core::OverwritePolicy;
+    fn upscale_doubles_dimensions_lanczos() {
+        // Upscale was a thin wrapper over `resize_file` at factor*100 %.
+        // The helper went away with the worker-thread refactor; inline the
+        // same call here so the contract (factor 2 → 200 % Lanczos) keeps
+        // its regression coverage.
+        use bigimage_core::{
+            resize_file, ConvertOutcome, EncodeOptions, Filter, OverwritePolicy, ResizeMode,
+        };
         use image::{Rgb, RgbImage};
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("src.png");
         RgbImage::from_pixel(30, 20, Rgb([10, 20, 30])).save(&path).unwrap();
 
-        let files = vec![path];
-        let (ok, skip, fail, err) = run_upscale_batch(&files, 2, None, OverwritePolicy::Replace);
-        assert_eq!((ok, skip, fail), (1, 0, 0), "err={err:?}");
+        let opts = EncodeOptions::default();
+        let outcome = resize_file(
+            &path,
+            ResizeMode::Percent(200.0),
+            Filter::Lanczos3,
+            None,
+            &opts,
+            OverwritePolicy::Replace,
+        )
+        .expect("resize_file at 200 %% should succeed");
+        assert!(matches!(outcome, ConvertOutcome::Written { .. }));
 
         // Output name follows resize's Percent suffix: "_200pct".
         let out = dir.path().join("src_200pct.png");
