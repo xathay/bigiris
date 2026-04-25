@@ -32,6 +32,7 @@ ndarray = "0.16"
 gtk4 = { version = "0.11", features = ["v4_12"] }
 libadwaita = { version = "0.9", features = ["v1_5"] }
 directories = "5"
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
 image = { version = "0.25", default-features = false, features = [
     # Tier 1: pure-Rust formats (default in all builds)
     "png",

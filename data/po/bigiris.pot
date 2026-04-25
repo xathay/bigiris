@@ -1,0 +1,23 @@
+# BigIris translation template.
+# Copyright (C) 2026 Leonardo Athayde
+# This file is distributed under the GPL-3.0-or-later license.
+#
+# Source language is pt-BR; translators provide msgstr in their target locale.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: bigiris 0.1.0\n"
+"Report-Msgid-Bugs-To: https://github.com/xathay/bigiris/issues\n"
+"POT-Creation-Date: 2026-04-25 21:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: crates/bigiris/src/gui.rs:334
+msgid "Propriedades da imagem (Ctrl+I)"
+msgstr ""

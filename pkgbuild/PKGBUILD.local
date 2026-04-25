@@ -40,7 +40,7 @@ optdepends=(
   'pcmanfm-qt: integração no gerenciador PCManFM-Qt (LXQt)'
   'io.elementary.files: integração no gerenciador Files (elementary)'
 )
-makedepends=('rust' 'cargo' 'pkgconf')
+makedepends=('rust' 'cargo' 'pkgconf' 'gettext')
 source=()
 md5sums=()
 install="$pkgname.install"
@@ -71,6 +71,12 @@ build() {
   # Se o build falhar por ausencia de libonnxruntime, re-executar com apenas
   # `--features gui` deixa tudo funcional menos remove-bg.
   cargo build --locked --release --features "gui ai" --package bigiris
+
+  # Compila .mo de cada idioma listado em data/po/LINGUAS.
+  while read -r lang; do
+    [[ -z "$lang" || "$lang" == \#* ]] && continue
+    msgfmt -o "data/po/${lang}.mo" "data/po/${lang}.po"
+  done < data/po/LINGUAS
 }
 
 check() {
@@ -98,6 +104,12 @@ package() {
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  while read -r lang; do
+    [[ -z "$lang" || "$lang" == \#* ]] && continue
+    install -Dm644 "data/po/${lang}.mo" \
+      "$pkgdir/usr/share/locale/${lang}/LC_MESSAGES/$pkgname.mo"
+  done < data/po/LINGUAS
 
   "$srcdir/target/release/bigiris" install-integrations --system \
     --destdir="$pkgdir"

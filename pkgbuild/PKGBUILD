@@ -29,15 +29,14 @@ optdepends=(
   'pcmanfm-qt: integração no gerenciador PCManFM-Qt (LXQt)'
   'io.elementary.files: integração no gerenciador Files (elementary)'
 )
-makedepends=('rust' 'cargo' 'git' 'pkgconf')
+makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gettext')
 source=("git+https://github.com/xathay/bigiris.git")
 sha256sums=('SKIP')
 install="$pkgname.install"
 
 prepare() {
   cd "$pkgname"
-  # Sem etapas dedicadas por enquanto — blueprint-compiler e gettext entram
-  # quando a GUI ganhar arquivos .blp e catalogos .po.
+  # blueprint-compiler entra quando a GUI ganhar arquivos .blp.
   true
 }
 
@@ -47,8 +46,15 @@ build() {
   export CARGO_TARGET_DIR="$srcdir/target"
   # `--features "gui ai"` compila o visualizador GTK4 / libadwaita e os
   # diálogos de IA (remover fundo via BiRefNet, upscale Lanczos3) dentro
-  # do mesmo binario `bigiris` (arquitetura single-binary, ver PLAN.md §1).
+  # do mesmo binario `bigiris` (arquitetura single-binary).
   cargo build --locked --release --features "gui ai" --package bigiris
+
+  # Compila os catalogos de traducao listados em data/po/LINGUAS.
+  # msgfmt -> .mo binario; package() instala em /usr/share/locale/<lang>/.
+  while read -r lang; do
+    [[ -z "$lang" || "$lang" == \#* ]] && continue
+    msgfmt -o "data/po/${lang}.mo" "data/po/${lang}.po"
+  done < data/po/LINGUAS
 }
 
 check() {
@@ -79,6 +85,13 @@ package() {
   # Documentacao / licenca
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  # Catalogos de traducao compilados em build().
+  while read -r lang; do
+    [[ -z "$lang" || "$lang" == \#* ]] && continue
+    install -Dm644 "data/po/${lang}.mo" \
+      "$pkgdir/usr/share/locale/${lang}/LC_MESSAGES/$pkgname.mo"
+  done < data/po/LINGUAS
 
   # Service menus system-wide: o proprio binario gera e coloca os arquivos
   # sob $pkgdir/usr/share/... e $pkgdir/etc/xdg/... para os seis

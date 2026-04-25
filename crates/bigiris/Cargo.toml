@@ -27,6 +27,10 @@ libadwaita = { workspace = true, optional = true }
 # and the GIF animate path needs it too. Compile cost is shared anyway
 # because `bigimage-core` already pulls it in.
 image.workspace = true
+# i18n: libintl wrapper. Always-on (no extra system deps — libintl is in
+# glibc on Linux). Translations live under data/po; .mo files are
+# compiled by the PKGBUILD and loaded from /usr/share/locale.
+gettext-rs = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

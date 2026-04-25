@@ -408,6 +408,8 @@ fn main() -> color_eyre::Result<()> {
         )
         .init();
 
+    init_i18n();
+
     let cli = Cli::parse();
 
     if cli.self_test {
@@ -488,6 +490,18 @@ fn main() -> color_eyre::Result<()> {
         Some(Command::ToPdf { files }) => run_to_pdf(&files),
         None => dispatch_gui(cli.dialog, &cli.files),
     }
+}
+
+/// Bind the `bigiris` textdomain to `/usr/share/locale` (the system path
+/// where the PKGBUILD installs compiled `.mo` catalogs) and switch to the
+/// user's locale. Each call returns `Result`; any failure means gettext
+/// silently returns source strings — acceptable graceful degrade for a
+/// dev `cargo run` where no catalogs are installed yet.
+fn init_i18n() {
+    gettextrs::setlocale(gettextrs::LocaleCategory::LcAll, "");
+    let _ = gettextrs::bindtextdomain("bigiris", "/usr/share/locale");
+    let _ = gettextrs::bind_textdomain_codeset("bigiris", "UTF-8");
+    let _ = gettextrs::textdomain("bigiris");
 }
 
 fn self_test() -> color_eyre::Result<()> {

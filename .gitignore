@@ -41,6 +41,9 @@ pkgbuild/*.pkg.tar.xz
 pkgbuild/src/
 pkgbuild/pkg/
 
+# i18n: .mo sao compilados pelo PKGBUILD a partir dos .po; nao versionar.
+data/po/*.mo
+
 # Modelos de IA baixados em dev
 /models/
 

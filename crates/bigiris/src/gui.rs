@@ -331,7 +331,7 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
     // Registrados aqui porque todos fecham sobre `state`.
     install_viewer_actions(app, &window, &state);
     let info_btn = gtk::Button::from_icon_name("dialog-information-symbolic");
-    info_btn.set_tooltip_text(Some("Propriedades da imagem (Ctrl+I)"));
+    info_btn.set_tooltip_text(Some(&gettextrs::gettext("Propriedades da imagem (Ctrl+I)")));
     info_btn.set_action_name(Some("win.info"));
     // Só faz sentido com imagem carregada — na dashboard fica escondido.
     // Fullscreen fica como F11 e double-click, sem botão dedicado no header

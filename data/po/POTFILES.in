@@ -1,0 +1,6 @@
+# Source files scanned by xgettext to (re)generate bigiris.pot.
+# Add new files here as more strings get wrapped with gettextrs::gettext().
+# Convention: msgid is the source string in pt-BR (the project's primary
+# language); .po catalogs translate FROM pt-BR into other locales.
+crates/bigiris/src/gui.rs
+crates/bigiris/src/main.rs
