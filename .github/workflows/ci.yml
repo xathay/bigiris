@@ -135,10 +135,7 @@ jobs:
     steps:
       - name: install Arch deps
         run: |
-          # nasm is required by ring (crypto, transitive via ureq) for its
-          # x86_64 asm; without it the final link fails with missing
-          # `ring_core_*` symbols. lld is rustc's default linker on Arch.
-          pacman -Syu --noconfirm --needed base-devel rust git sudo nasm lld
+          pacman -Syu --noconfirm --needed base-devel rust git sudo
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
       - uses: actions/checkout@v4

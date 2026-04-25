@@ -14,6 +14,7 @@ depends=(
   'gtk4'
   'libadwaita'
   'dav1d'            # decodificador AVIF
+  'openssl'          # TLS para download de modelos IA (ureq + native-tls)
   'onnxruntime'      # IA (remove-bg via BiRefNet); embutida no binario
   'hicolor-icon-theme'
 )

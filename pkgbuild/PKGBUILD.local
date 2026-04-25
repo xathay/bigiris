@@ -25,6 +25,7 @@ depends=(
   'gtk4'
   'libadwaita'
   'dav1d'
+  'openssl'
   'hicolor-icon-theme'
 )
 optdepends=(
