@@ -2518,6 +2518,7 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
                 quality: Some(quality_spin.value() as u8),
                 progressive: progressive_switch.is_active(),
                 optimize: optimize_switch.is_active(),
+                ..EncodeOptions::default()
             };
 
             apply_btn.set_sensitive(false);
@@ -4839,6 +4840,7 @@ fn build_batch_dialog(
                 quality: Some(quality_spin.value() as u8),
                 progressive: progressive_switch.is_active(),
                 optimize: optimize_switch.is_active(),
+                ..EncodeOptions::default()
             };
             let out_dir_snapshot = output_dir.borrow().clone();
 
@@ -5501,7 +5503,12 @@ fn build_remove_bg_dialog(
                             continue;
                         }
                         {
-                            let mut st = shared.lock().unwrap();
+                            // A poisoned mutex would normally panic the worker
+                            // and silently kill the GUI thread when the timeout
+                            // poll later tried to lock; into_inner() recovers
+                            // the inner state and lets the dialog finish with
+                            // a clean error instead.
+                            let mut st = shared.lock().unwrap_or_else(|p| p.into_inner());
                             *st = BgUiState::Processing {
                                 idx,
                                 total,
@@ -5516,7 +5523,7 @@ fn build_remove_bg_dialog(
                             if let bigimage_ai::background::BgStage::Download { done, total } =
                                 stage
                             {
-                                let mut st = shared_cb.lock().unwrap();
+                                let mut st = shared_cb.lock().unwrap_or_else(|p| p.into_inner());
                                 *st = BgUiState::Download { done, total };
                             }
                         });
@@ -5530,7 +5537,7 @@ fn build_remove_bg_dialog(
                             }
                         }
                     }
-                    let mut st = shared.lock().unwrap();
+                    let mut st = shared.lock().unwrap_or_else(|p| p.into_inner());
                     *st = BgUiState::Done { outputs, first_err };
                 });
             }
@@ -5548,7 +5555,7 @@ fn build_remove_bg_dialog(
                 if cancelled_poll.load(std::sync::atomic::Ordering::Relaxed) {
                     return glib::ControlFlow::Break;
                 }
-                let snapshot = shared.lock().unwrap().clone();
+                let snapshot = shared.lock().unwrap_or_else(|p| p.into_inner()).clone();
                 match snapshot {
                     BgUiState::Idle => glib::ControlFlow::Continue,
                     BgUiState::Download { done, total } => {

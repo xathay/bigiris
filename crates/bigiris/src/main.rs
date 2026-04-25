@@ -419,7 +419,7 @@ fn main() -> color_eyre::Result<()> {
 
     match cli.command {
         Some(Command::Convert { to, quality, progressive, optimize, overwrite, files }) => {
-            let opts = EncodeOptions { quality, progressive, optimize };
+            let opts = EncodeOptions { quality, progressive, optimize, ..EncodeOptions::default() };
             run_convert(&to, opts, overwrite.into(), &files)
         }
         Some(Command::Resize {
@@ -432,7 +432,7 @@ fn main() -> color_eyre::Result<()> {
             overwrite,
             files,
         }) => {
-            let opts = EncodeOptions { quality, progressive, optimize };
+            let opts = EncodeOptions { quality, progressive, optimize, ..EncodeOptions::default() };
             run_resize(
                 mode.into_mode(),
                 filter.into(),
