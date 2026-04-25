@@ -63,10 +63,31 @@
 
   <content_rating type="oars-1.1" />
 
+  <screenshots>
+    <screenshot type="default">
+      <caption>Viewer Íris with a loaded photo</caption>
+      <caption xml:lang="pt-BR">Visualizador Íris com uma foto carregada</caption>
+      <image type="source" width="1280" height="720">https://raw.githubusercontent.com/xathay/bigiris/main/docs/screenshots/01-viewer.png</image>
+    </screenshot>
+  </screenshots>
+
   <releases>
-    <release version="0.1.0" date="2026-04-19">
+    <release version="0.1.0" date="2026-04-25">
       <description>
-        <p xml:lang="pt-BR">Scaffold inicial do projeto (M0).</p>
+        <p>Pre-release focused on safety and packaging readiness for the BigLinux testing repository.</p>
+        <p xml:lang="pt-BR">Pré-release com foco em segurança e prontidão de empacotamento para o repositório `testing` do BigLinux.</p>
+        <ul>
+          <li>Viewer Íris (GTK4 + libadwaita): zoom cursor-anchored, drag pan, slideshow, film strip, histogram, theater mode</li>
+          <li xml:lang="pt-BR">Visualizador Íris (GTK4 + libadwaita): zoom centrado no cursor, pan por arrasto, slideshow, film strip, histograma, modo teatro</li>
+          <li>Prisma dialogs (Convert, Resize, Rotate, Flip, Crop, Adjust, Compare, Metadata, Animate, Batch, Remove-bg, Upscale) running off the GTK main thread for IrfanView-grade batch responsiveness</li>
+          <li xml:lang="pt-BR">Diálogos Prisma (Convert, Resize, Rotate, Flip, Crop, Adjust, Compare, Metadata, Animate, Batch, Remove-bg, Upscale) rodando fora da main loop do GTK para responsividade em lote no nível do IrfanView</li>
+          <li>Local AI background removal with BiRefNet-lite (MIT) — model pinned by SHA-256, FOSS license allowlist, cached across batch</li>
+          <li xml:lang="pt-BR">Remoção de fundo via IA local com BiRefNet-lite (MIT) — modelo pinado por SHA-256, allowlist FOSS de licenças, cache entre arquivos do lote</li>
+          <li>File-manager integration for Dolphin, Nautilus, Nemo, Thunar, PCManFM-Qt and elementary Files — `O_NOFOLLOW`-protected installs, shell-injection-safe Thunar UCA</li>
+          <li xml:lang="pt-BR">Integração com gerenciadores de arquivos: Dolphin, Nautilus, Nemo, Thunar, PCManFM-Qt e Arquivos (elementary) — instalação com `O_NOFOLLOW` e UCA do Thunar imune a injeção de shell</li>
+          <li>Decode bombs guarded with byte (1 GiB) and pixel (256 MP) caps before decompression</li>
+          <li xml:lang="pt-BR">Defesa contra decode bombs com limite de bytes (1 GiB) e pixels (256 MP) antes da descompressão</li>
+        </ul>
       </description>
     </release>
   </releases>
