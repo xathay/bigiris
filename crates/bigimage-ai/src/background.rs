@@ -8,12 +8,17 @@
 //! dialog can offer a "rebuild with `--features ai` / install
 //! `onnxruntime`" message instead of silently failing.
 //!
+//! **Batch use:** for multi-file dialogs, prefer [`BgSession`] over
+//! [`remove_background`]. The session loads the 224 MB of ONNX weights
+//! once and reuses them across every `process()` call — a 50-image
+//! batch goes from "load + run × 50" to "load once + run × 50".
+//!
 //! Licensing: BiRefNet ships under MIT. We refuse any model whose SPDX
 //! identifier isn't on the FOSS allowlist in [`super::download`].
 
 use image::DynamicImage;
 #[cfg(feature = "onnx")]
-use image::{GenericImageView, ImageBuffer, Rgba};
+use image::GenericImageView;
 use thiserror::Error;
 
 #[cfg(feature = "onnx")]
@@ -35,6 +40,12 @@ pub const BIREFNET_LITE: ModelSource = ModelSource {
     size_bytes: 224_005_088,
     description: "BiRefNet-lite — remoção de fundo FP32, MIT (onnx-community mirror).",
 };
+
+/// Inference resolution the BiRefNet ONNX export expects.
+#[cfg(feature = "onnx")]
+const INPUT_SIDE: usize = 1024;
+#[cfg(feature = "onnx")]
+const INPUT_PIXELS: usize = INPUT_SIDE * INPUT_SIDE;
 
 /// Progress signal emitted by [`remove_background_with_progress`]. The
 /// UI layer uses it to drive a `gtk::ProgressBar`; the CLI discards it.
@@ -80,94 +91,160 @@ pub enum BgError {
     Processing(String),
 }
 
-/// Remove the background of `input`, returning an RGBA image whose
-/// alpha channel tracks the foreground mask predicted by BiRefNet.
+/// One-shot wrapper: ensure the model is on disk + load a session +
+/// run inference + drop everything. Convenient for the CLI's single-
+/// file path. **Don't use this in a batch loop** — every call reloads
+/// 224 MB of weights. See [`BgSession`] for the cached variant.
 ///
-/// Does not touch disk: pure in-memory, safe to call from dialogs on
-/// the UI thread (though you probably want `spawn_blocking`).
+/// Pure in-memory; safe to call from worker threads.
 pub fn remove_background(input: &DynamicImage) -> Result<DynamicImage, BgError> {
     remove_background_with_progress(input, |_| {})
 }
 
 /// Same as [`remove_background`], but forwards a [`BgStage`] signal at
-/// each phase change so the caller can drive a progress bar. Download
-/// bytes flow through as `BgStage::Download { done, total }`; the
-/// transition to inference emits `BgStage::Infer` once.
+/// each phase change so the caller can drive a progress bar.
 pub fn remove_background_with_progress(
     input: &DynamicImage,
     mut progress: impl FnMut(BgStage),
 ) -> Result<DynamicImage, BgError> {
-    #[cfg(not(feature = "onnx"))]
-    {
-        let _ = (input, &mut progress);
-        Err(BgError::OnnxDisabled)
+    let mut sess = BgSession::new(&mut progress)?;
+    sess.process(input)
+}
+
+/// Cached background-removal pipeline.
+///
+/// Constructing a [`BgSession`] downloads (if needed) and loads the
+/// BiRefNet weights into an `ort` session. Each call to [`process`]
+/// reuses that session — running inference takes a few hundred ms on a
+/// modern CPU, while loading the session takes seconds. Batch flows
+/// (dialog with N files, CLI passing many paths) should construct one
+/// session and call `process` per file.
+///
+/// [`process`]: BgSession::process
+pub struct BgSession {
+    /// Loaded ORT inference session. Behind `onnx` so non-AI builds
+    /// don't pay the dep cost.
+    #[cfg(feature = "onnx")]
+    session: ort::session::Session,
+}
+
+impl BgSession {
+    /// Ensure the model is on disk (downloading if needed) and load it
+    /// into a reusable inference session. `progress` fires with
+    /// [`BgStage::Download`] during download (when the cache is cold)
+    /// and once with [`BgStage::Infer`] when the session is ready.
+    pub fn new(mut progress: impl FnMut(BgStage)) -> Result<Self, BgError> {
+        #[cfg(not(feature = "onnx"))]
+        {
+            let _ = &mut progress;
+            Err(BgError::OnnxDisabled)
+        }
+
+        #[cfg(feature = "onnx")]
+        {
+            let model_path = download::ensure(&BIREFNET_LITE, |done, total| {
+                progress(BgStage::Download { done, total });
+            })?;
+            progress(BgStage::Infer);
+
+            let session = build_session(&model_path)?;
+            Ok(Self { session })
+        }
     }
 
-    #[cfg(feature = "onnx")]
-    {
-        use image::imageops::FilterType;
+    /// Run BiRefNet on `input` and return an RGBA image whose alpha
+    /// channel tracks the foreground mask. Reuses the loaded session;
+    /// no disk I/O.
+    pub fn process(&mut self, input: &DynamicImage) -> Result<DynamicImage, BgError> {
+        #[cfg(not(feature = "onnx"))]
+        {
+            let _ = input;
+            Err(BgError::OnnxDisabled)
+        }
 
-        // 1. Ensure model is on disk (download if needed). The progress
-        //    callback fires once per chunk during download and once with
-        //    (size, size) when the cache is already warm.
-        let model_path = download::ensure(&BIREFNET_LITE, |done, total| {
-            progress(BgStage::Download { done, total });
-        })?;
-        progress(BgStage::Infer);
+        #[cfg(feature = "onnx")]
+        {
+            use image::imageops::FilterType;
 
-        // 2. Load / cache the ort session.
-        let mut session = ort_session(&model_path)?;
+            let (orig_w, orig_h) = input.dimensions();
+            let resized = input
+                .resize_exact(INPUT_SIDE as u32, INPUT_SIDE as u32, FilterType::Lanczos3)
+                .to_rgb8();
 
-        // 3. Preprocess: resize to 1024x1024, normalise with ImageNet
-        //    mean/std, NCHW float tensor.
-        let (orig_w, orig_h) = input.dimensions();
-        let resized = input.resize_exact(1024, 1024, FilterType::Lanczos3).to_rgb8();
-
-        let mean = [0.485f32, 0.456, 0.406];
-        let std = [0.229f32, 0.224, 0.225];
-        let mut tensor = ndarray::Array4::<f32>::zeros((1, 3, 1024, 1024));
-        for y in 0..1024u32 {
-            for x in 0..1024u32 {
-                let p = resized.get_pixel(x, y).0;
+            // Preprocess: HWC u8 → CHW f32 normalised by ImageNet stats.
+            // Walking each channel as a contiguous slice lets the inner
+            // loop auto-vectorise; the previous nested-index version was
+            // bounds-checked on every iteration and sat ~5x slower.
+            let mean = [0.485f32, 0.456, 0.406];
+            let std = [0.229f32, 0.224, 0.225];
+            let raw: &[u8] = resized.as_raw();
+            let mut tensor = ndarray::Array4::<f32>::zeros((1, 3, INPUT_SIDE, INPUT_SIDE));
+            {
+                let plane = INPUT_PIXELS;
+                let dst = tensor.as_slice_mut().expect("CHW tensor must be contiguous");
                 for c in 0..3 {
-                    let v = (p[c] as f32 / 255.0 - mean[c]) / std[c];
-                    tensor[[0, c, y as usize, x as usize]] = v;
+                    let m = mean[c];
+                    let s = std[c];
+                    let dst_chan = &mut dst[c * plane..(c + 1) * plane];
+                    for (i, out) in dst_chan.iter_mut().enumerate() {
+                        let v = f32::from(raw[i * 3 + c]) / 255.0;
+                        *out = (v - m) / s;
+                    }
                 }
             }
-        }
 
-        // 4. Run inference.
-        let mask = run_session(&mut session, tensor)?;
+            let mask = run_session(&mut self.session, tensor)?;
 
-        // 5. Postprocess: resize mask back to original dims, composite.
-        let mask_img: ImageBuffer<image::Luma<u8>, Vec<u8>> =
-            ImageBuffer::from_fn(1024, 1024, |x, y| {
-                let v = mask[[0, 0, y as usize, x as usize]];
-                image::Luma([(v.clamp(0.0, 1.0) * 255.0) as u8])
-            });
-        let mask_full = image::imageops::resize(
-            &mask_img,
-            orig_w,
-            orig_h,
-            image::imageops::FilterType::Lanczos3,
-        );
-
-        let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(orig_w, orig_h);
-        let src_rgba = input.to_rgba8();
-        for y in 0..orig_h {
-            for x in 0..orig_w {
-                let src = src_rgba.get_pixel(x, y).0;
-                let m = mask_full.get_pixel(x, y).0[0];
-                out.put_pixel(x, y, Rgba([src[0], src[1], src[2], m]));
+            // Mask back to 1024² u8, then resize to original dims.
+            let mask_data: &[f32] = mask.as_slice().expect("CHW mask must be contiguous");
+            let mut mask_u8: Vec<u8> = Vec::with_capacity(INPUT_PIXELS);
+            for &v in &mask_data[..INPUT_PIXELS] {
+                mask_u8.push((v.clamp(0.0, 1.0) * 255.0) as u8);
             }
+            let mask_img = image::ImageBuffer::<image::Luma<u8>, Vec<u8>>::from_vec(
+                INPUT_SIDE as u32,
+                INPUT_SIDE as u32,
+                mask_u8,
+            )
+            .expect("mask buffer matches dimensions");
+            let mask_full = image::imageops::resize(
+                &mask_img,
+                orig_w,
+                orig_h,
+                image::imageops::FilterType::Lanczos3,
+            );
+
+            // Composite RGB src + mask alpha → RGBA dest. Both source
+            // and dest are HWC; iterate as flat slices.
+            let src_rgba = input.to_rgba8();
+            let src: &[u8] = src_rgba.as_raw();
+            let mask_raw: &[u8] = mask_full.as_raw();
+            let n = (orig_w as usize) * (orig_h as usize);
+            let mut out_buf: Vec<u8> = Vec::with_capacity(n * 4);
+            for i in 0..n {
+                out_buf.push(src[i * 4]);
+                out_buf.push(src[i * 4 + 1]);
+                out_buf.push(src[i * 4 + 2]);
+                out_buf.push(mask_raw[i]);
+            }
+            let out =
+                image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_vec(orig_w, orig_h, out_buf)
+                    .expect("RGBA buffer matches dimensions");
+            Ok(DynamicImage::ImageRgba8(out))
         }
-        Ok(DynamicImage::ImageRgba8(out))
     }
 }
 
+/// Build an ORT session for `path`, capping intra-op threads so the
+/// inference doesn't starve the GUI / file-manager processes of CPU.
+/// Default ORT behavior is "use every core for one op" — fine for
+/// servers, hostile for an interactive desktop tool.
 #[cfg(feature = "onnx")]
-fn ort_session(path: &std::path::Path) -> Result<ort::session::Session, BgError> {
+fn build_session(path: &std::path::Path) -> Result<ort::session::Session, BgError> {
+    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
+    let intra = cores.saturating_sub(1).max(1);
     ort::session::Session::builder()
+        .and_then(|b| b.with_intra_threads(intra))
         .and_then(|b| b.commit_from_file(path))
         .map_err(|e| BgError::Inference(format!("load session: {e}")))
 }
@@ -216,5 +293,18 @@ mod tests {
         let img = DynamicImage::new_rgb8(8, 8);
         let err = remove_background(&img).unwrap_err();
         assert!(matches!(err, BgError::OnnxDisabled));
+    }
+
+    #[cfg(not(feature = "onnx"))]
+    #[test]
+    fn session_new_returns_clear_error_without_feature() {
+        // BgSession holds an ort::Session under `onnx` and nothing
+        // otherwise — neither implements Debug, so we pattern-match
+        // instead of `.unwrap_err()` which would require Debug on Ok.
+        match BgSession::new(|_| {}) {
+            Err(BgError::OnnxDisabled) => {}
+            Err(other) => panic!("expected OnnxDisabled, got {other}"),
+            Ok(_) => panic!("expected OnnxDisabled error without `onnx` feature"),
+        }
     }
 }

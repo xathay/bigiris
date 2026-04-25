@@ -5207,16 +5207,16 @@ fn nobg_output_path(src: &Path) -> PathBuf {
 }
 
 /// Run one remove-bg pass over `src`: decode → BiRefNet → save PNG RGBA.
-/// `progress` receives the [`BgStage`] signals emitted by the backend so
-/// dialogs can drive a `gtk::ProgressBar`. Errors bubble the reason so
-/// the caller can show a precise message.
-fn remove_bg_one_file_with_progress(
+/// Reuse-friendly remove-bg: takes a pre-loaded [`BgSession`] (~224 MB
+/// of weights stay resident across calls) and runs inference + saves
+/// the RGBA output. Used by the dialog batch loop so a 50-file batch
+/// loads BiRefNet **once**, not 50 times.
+fn remove_bg_one_with_session(
+    session: &mut bigimage_ai::background::BgSession,
     src: &Path,
-    progress: impl FnMut(bigimage_ai::background::BgStage),
 ) -> Result<PathBuf, String> {
     let img = image::open(src).map_err(|e| format!("decode: {e}"))?;
-    let out = bigimage_ai::background::remove_background_with_progress(&img, progress)
-        .map_err(|e| e.to_string())?;
+    let out = session.process(&img).map_err(|e| e.to_string())?;
     let dest = nobg_output_path(src);
     out.save_with_format(&dest, image::ImageFormat::Png).map_err(|e| format!("encode: {e}"))?;
     Ok(dest)
@@ -5421,7 +5421,31 @@ fn build_remove_bg_dialog(
                 let shared = shared.clone();
                 let cancelled_w = cancelled.clone();
                 std::thread::spawn(move || {
+                    // Build a single BgSession for the whole batch — Download
+                    // progress streams once, then the loaded weights are
+                    // reused for every file. Previous code reloaded ~224 MB
+                    // per file (perf review I-ORT).
                     let total = files_owned.len();
+                    let session_progress_shared = shared.clone();
+                    let session_result = bigimage_ai::background::BgSession::new(move |stage| {
+                        if let bigimage_ai::background::BgStage::Download { done, total } = stage {
+                            let mut st =
+                                session_progress_shared.lock().unwrap_or_else(|p| p.into_inner());
+                            *st = BgUiState::Download { done, total };
+                        }
+                    });
+                    let mut session = match session_result {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let mut st = shared.lock().unwrap_or_else(|p| p.into_inner());
+                            *st = BgUiState::Done {
+                                outputs: vec![None; total],
+                                first_err: Some(format!("falha ao carregar modelo: {e}")),
+                            };
+                            return;
+                        }
+                    };
+
                     let mut outputs: Vec<Option<PathBuf>> = Vec::with_capacity(total);
                     let mut first_err: Option<String> = None;
                     for (idx, path) in files_owned.iter().enumerate() {
@@ -5448,16 +5472,7 @@ fn build_remove_bg_dialog(
                                     .unwrap_or_default(),
                             };
                         }
-                        let shared_cb = shared.clone();
-                        let result = remove_bg_one_file_with_progress(path, move |stage| {
-                            if let bigimage_ai::background::BgStage::Download { done, total } =
-                                stage
-                            {
-                                let mut st = shared_cb.lock().unwrap_or_else(|p| p.into_inner());
-                                *st = BgUiState::Download { done, total };
-                            }
-                        });
-                        match result {
+                        match remove_bg_one_with_session(&mut session, path) {
                             Ok(out) => outputs.push(Some(out)),
                             Err(e) => {
                                 if first_err.is_none() {
