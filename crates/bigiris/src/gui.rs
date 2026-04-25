@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::{gdk, gio, glib, graphene};
 use gtk4 as gtk;
 use libadwaita as adw;
@@ -331,7 +332,7 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
     // Registrados aqui porque todos fecham sobre `state`.
     install_viewer_actions(app, &window, &state);
     let info_btn = gtk::Button::from_icon_name("dialog-information-symbolic");
-    info_btn.set_tooltip_text(Some(&gettextrs::gettext("Propriedades da imagem (Ctrl+I)")));
+    info_btn.set_tooltip_text(Some(&gettext("Propriedades da imagem (Ctrl+I)")));
     info_btn.set_action_name(Some("win.info"));
     // Só faz sentido com imagem carregada — na dashboard fica escondido.
     // Fullscreen fica como F11 e double-click, sem botão dedicado no header
@@ -926,7 +927,7 @@ fn toggle_slideshow(state: &Rc<RefCell<ViewerState>>) {
             id.remove();
         }
         let s = state.borrow();
-        s.osd_label.set_text("Slideshow: pausado");
+        s.osd_label.set_text(&gettext("Slideshow: pausado"));
         drop(s);
         pulse_osd(state);
         return;
@@ -1140,9 +1141,10 @@ fn save_edits(state: &Rc<RefCell<ViewerState>>) {
     } else {
         format!("\"{name}\" será sobrescrito.")
     };
-    let alert = adw::AlertDialog::builder().heading("Salvar alterações?").body(body).build();
-    alert.add_response("cancel", "Cancelar");
-    alert.add_response("save", "Salvar");
+    let alert =
+        adw::AlertDialog::builder().heading(gettext("Salvar alterações?")).body(body).build();
+    alert.add_response("cancel", &gettext("Cancelar"));
+    alert.add_response("save", &gettext("Salvar"));
     alert.set_response_appearance("save", adw::ResponseAppearance::Suggested);
     alert.set_default_response(Some("save"));
     alert.set_close_response("cancel");
@@ -1154,14 +1156,14 @@ fn save_edits(state: &Rc<RefCell<ViewerState>>) {
             refresh_title(&state);
             sync_save_action(&state);
             let s = state.borrow();
-            s.osd_label.set_text("Salvo");
+            s.osd_label.set_text(&gettext("Salvo"));
             drop(s);
             pulse_osd(&state);
         }
         Err(e) => {
             tracing::error!(?path, error = %e, "save: falha ao gravar edições");
             let s = state.borrow();
-            s.osd_label.set_text("Falha ao salvar");
+            s.osd_label.set_text(&gettext("Falha ao salvar"));
             drop(s);
             pulse_osd(&state);
         }
@@ -1365,7 +1367,7 @@ fn update_display(state: &Rc<RefCell<ViewerState>>) {
     refresh_title(state);
     if had_pending {
         let s = state.borrow();
-        s.osd_label.set_text("Edições descartadas");
+        s.osd_label.set_text(&gettext("Edições descartadas"));
         drop(s);
         pulse_osd(state);
     }
@@ -1379,48 +1381,48 @@ fn build_header_menu_button(state: &Rc<RefCell<ViewerState>>) -> gtk::MenuButton
     let menu = gio::Menu::new();
 
     let s_file = gio::Menu::new();
-    s_file.append(Some("Abrir imagens…"), Some("win.open"));
-    s_file.append(Some("Copiar imagem"), Some("win.copy"));
+    s_file.append(Some(&gettext("Abrir imagens…")), Some("win.open"));
+    s_file.append(Some(&gettext("Copiar imagem")), Some("win.copy"));
     menu.append_section(None, &s_file);
 
     let s_actions = gio::Menu::new();
-    s_actions.append(Some("Imprimir…"), Some("win.print"));
+    s_actions.append(Some(&gettext("Imprimir…")), Some("win.print"));
     menu.append_section(None, &s_actions);
 
     // Edição in-memory estilo Loupe: giros/espelhos aplicados na hora;
     // só vão pra disco quando o user pedir Salvar (Ctrl+S).
     let s_edit = gio::Menu::new();
-    s_edit.append(Some("Girar à direita"), Some("win.rotate-cw"));
-    s_edit.append(Some("Girar à esquerda"), Some("win.rotate-ccw"));
-    s_edit.append(Some("Girar 180°"), Some("win.rotate-180"));
-    s_edit.append(Some("Espelhar horizontal"), Some("win.flip-h"));
-    s_edit.append(Some("Espelhar vertical"), Some("win.flip-v"));
-    s_edit.append(Some("Recortar…"), Some("win.crop"));
+    s_edit.append(Some(&gettext("Girar à direita")), Some("win.rotate-cw"));
+    s_edit.append(Some(&gettext("Girar à esquerda")), Some("win.rotate-ccw"));
+    s_edit.append(Some(&gettext("Girar 180°")), Some("win.rotate-180"));
+    s_edit.append(Some(&gettext("Espelhar horizontal")), Some("win.flip-h"));
+    s_edit.append(Some(&gettext("Espelhar vertical")), Some("win.flip-v"));
+    s_edit.append(Some(&gettext("Recortar…")), Some("win.crop"));
     menu.append_section(None, &s_edit);
 
     // IA: cada item dispara um subprocesso `bigiris --dialog=…` (mesmo
     // motivo do crop: cada diálogo monta sua própria adw::Application).
     let s_ai = gio::Menu::new();
-    s_ai.append(Some("Remover fundo (IA)…"), Some("win.remove-bg"));
-    s_ai.append(Some("Aumentar resolução…"), Some("win.upscale"));
+    s_ai.append(Some(&gettext("Remover fundo (IA)…")), Some("win.remove-bg"));
+    s_ai.append(Some(&gettext("Aumentar resolução…")), Some("win.upscale"));
     menu.append_section(None, &s_ai);
 
     let s_save = gio::Menu::new();
-    s_save.append(Some("Salvar alterações"), Some("win.save-edits"));
+    s_save.append(Some(&gettext("Salvar alterações")), Some("win.save-edits"));
     menu.append_section(None, &s_save);
 
     let s_delete = gio::Menu::new();
-    s_delete.append(Some("Mover para a lixeira"), Some("win.trash"));
+    s_delete.append(Some(&gettext("Mover para a lixeira")), Some("win.trash"));
     menu.append_section(None, &s_delete);
 
     let s_help = gio::Menu::new();
-    s_help.append(Some("Atalhos do teclado"), Some("win.shortcuts"));
-    s_help.append(Some("Sobre o BigIris"), Some("app.about"));
+    s_help.append(Some(&gettext("Atalhos do teclado")), Some("win.shortcuts"));
+    s_help.append(Some(&gettext("Sobre o BigIris")), Some("app.about"));
     menu.append_section(None, &s_help);
 
     let btn = gtk::MenuButton::new();
     btn.set_icon_name("open-menu-symbolic");
-    btn.set_tooltip_text(Some("Menu principal"));
+    btn.set_tooltip_text(Some(&gettext("Menu principal")));
     btn.set_menu_model(Some(&menu));
     // Fixa a header enquanto o popover está aberto — senão o timer de
     // auto-hide do ToolbarView dispara com o cursor já dentro do popover
@@ -1787,13 +1789,13 @@ fn trash_current(state: &Rc<RefCell<ViewerState>>) {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string());
     let alert = adw::AlertDialog::builder()
-        .heading("Mover para a lixeira?")
+        .heading(gettext("Mover para a lixeira?"))
         .body(format!(
             "\"{name}\" será movido para a lixeira do sistema. Você pode restaurá-lo depois."
         ))
         .build();
-    alert.add_response("cancel", "Cancelar");
-    alert.add_response("trash", "Mover");
+    alert.add_response("cancel", &gettext("Cancelar"));
+    alert.add_response("trash", &gettext("Mover"));
     alert.set_response_appearance("trash", adw::ResponseAppearance::Destructive);
     alert.set_default_response(Some("cancel"));
     alert.set_close_response("cancel");
@@ -2380,7 +2382,7 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .build();
 
     let quality_spin = adw::SpinRow::with_range(1.0, 100.0, 1.0);
-    quality_spin.set_title("Qualidade (JPEG/lossy)");
+    quality_spin.set_title(&gettext("Qualidade (JPEG/lossy)"));
     quality_spin.set_subtitle("1 pior · 85 bom · 100 sem perdas");
     quality_spin.set_value(85.0);
 
@@ -2519,7 +2521,7 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Convertendo…");
+            status.set_text(&gettext("Convertendo…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -2570,27 +2572,27 @@ fn build_resize_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
     // Per-mode parameter pages live inside a Stack; switching the combo swaps
     // the page. Each page owns its own SpinRows so we can read values back.
     let max_edge_spin = adw::SpinRow::with_range(1.0, 16384.0, 1.0);
-    max_edge_spin.set_title("Aresta máxima");
+    max_edge_spin.set_title(&gettext("Aresta máxima"));
     max_edge_spin.set_subtitle("pixels (lado maior)");
     max_edge_spin.set_value(1920.0);
 
     let percent_spin = adw::SpinRow::with_range(1.0, 1000.0, 1.0);
-    percent_spin.set_title("Porcentagem");
+    percent_spin.set_title(&gettext("Porcentagem"));
     percent_spin.set_subtitle("100 = tamanho original");
     percent_spin.set_value(50.0);
 
     let exact_w = adw::SpinRow::with_range(1.0, 16384.0, 1.0);
-    exact_w.set_title("Largura");
+    exact_w.set_title(&gettext("Largura"));
     exact_w.set_value(1920.0);
     let exact_h = adw::SpinRow::with_range(1.0, 16384.0, 1.0);
-    exact_h.set_title("Altura");
+    exact_h.set_title(&gettext("Altura"));
     exact_h.set_value(1080.0);
 
     let fit_w = adw::SpinRow::with_range(1.0, 16384.0, 1.0);
-    fit_w.set_title("Largura máxima");
+    fit_w.set_title(&gettext("Largura máxima"));
     fit_w.set_value(1920.0);
     let fit_h = adw::SpinRow::with_range(1.0, 16384.0, 1.0);
-    fit_h.set_title("Altura máxima");
+    fit_h.set_title(&gettext("Altura máxima"));
     fit_h.set_value(1080.0);
 
     let page_max_edge = adw::PreferencesGroup::new();
@@ -2829,7 +2831,7 @@ fn build_resize_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Redimensionando…");
+            status.set_text(&gettext("Redimensionando…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -3054,7 +3056,7 @@ fn build_rotate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Girando…");
+            status.set_text(&gettext("Girando…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -3446,19 +3448,19 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
     // Ranges clamp to the first file's natural dims. For multi-file sets
     // with different sizes, per-file validation handles the rest.
     let x_spin = adw::SpinRow::with_range(0.0, (natural.0.saturating_sub(1)) as f64, 1.0);
-    x_spin.set_title("X (px)");
+    x_spin.set_title(&gettext("X (px)"));
     x_spin.set_value(initial.x as f64);
 
     let y_spin = adw::SpinRow::with_range(0.0, (natural.1.saturating_sub(1)) as f64, 1.0);
-    y_spin.set_title("Y (px)");
+    y_spin.set_title(&gettext("Y (px)"));
     y_spin.set_value(initial.y as f64);
 
     let w_spin = adw::SpinRow::with_range(1.0, natural.0 as f64, 1.0);
-    w_spin.set_title("Largura (px)");
+    w_spin.set_title(&gettext("Largura (px)"));
     w_spin.set_value(initial.width as f64);
 
     let h_spin = adw::SpinRow::with_range(1.0, natural.1 as f64, 1.0);
-    h_spin.set_title("Altura (px)");
+    h_spin.set_title(&gettext("Altura (px)"));
     h_spin.set_value(initial.height as f64);
 
     let mut target_names = vec!["Manter (mesmo formato da origem)"];
@@ -3568,7 +3570,7 @@ fn build_crop_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Recortando…");
+            status.set_text(&gettext("Recortando…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -3804,7 +3806,7 @@ fn build_upscale_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Aumentando…");
+            status.set_text(&gettext("Aumentando…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -3959,7 +3961,7 @@ fn build_flip_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Ap
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Espelhando…");
+            status.set_text(&gettext("Espelhando…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -4028,22 +4030,22 @@ fn build_adjust_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
     header.set_title_widget(Some(&adw::WindowTitle::new("Ajustar cores", "Prisma")));
 
     let brightness = adw::SpinRow::with_range(-100.0, 100.0, 1.0);
-    brightness.set_title("Brilho");
+    brightness.set_title(&gettext("Brilho"));
     brightness.set_subtitle("-100 escuro · 0 neutro · +100 claro");
     brightness.set_value(0.0);
 
     let contrast = adw::SpinRow::with_range(-100.0, 100.0, 1.0);
-    contrast.set_title("Contraste");
+    contrast.set_title(&gettext("Contraste"));
     contrast.set_subtitle("-100 plano · 0 neutro · +100 agressivo");
     contrast.set_value(0.0);
 
     let saturation = adw::SpinRow::with_range(-100.0, 100.0, 1.0);
-    saturation.set_title("Saturação");
+    saturation.set_title(&gettext("Saturação"));
     saturation.set_subtitle("-100 cinza · 0 neutro · +100 vibrante");
     saturation.set_value(0.0);
 
     let gamma = adw::SpinRow::with_range(0.1, 10.0, 0.05);
-    gamma.set_title("Gamma");
+    gamma.set_title(&gettext("Gamma"));
     gamma.set_subtitle("< 1 clareia midtones · 1 neutro · > 1 escurece");
     gamma.set_digits(2);
     gamma.set_value(1.0);
@@ -4209,7 +4211,7 @@ fn build_adjust_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Ajustando…");
+            status.set_text(&gettext("Ajustando…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -4648,7 +4650,7 @@ fn build_batch_dialog(
     convert_group.add(&format_row);
 
     let quality_spin = adw::SpinRow::with_range(1.0, 100.0, 1.0);
-    quality_spin.set_title("Qualidade (JPEG/lossy)");
+    quality_spin.set_title(&gettext("Qualidade (JPEG/lossy)"));
     quality_spin.set_subtitle("1 pior · 85 bom · 100 sem perdas");
     quality_spin.set_value(85.0);
     convert_group.add(&quality_spin);
@@ -4852,8 +4854,8 @@ fn build_batch_dialog(
             }
             apply_btn.set_sensitive(false);
             progress.set_fraction(0.0);
-            progress.set_text(Some("Iniciando…"));
-            status.set_text("Processando…");
+            progress.set_text(Some(&gettext("Iniciando…")));
+            status.set_text(&gettext("Processando…"));
 
             // Processa 1 arquivo por idle tick — UI continua responsiva,
             // Cancelar efetivo a cada iteração. Não é thread-pool (single
@@ -5139,7 +5141,7 @@ fn build_animate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
 
     // Parametric rows.
     let delay_spin = adw::SpinRow::with_range(10.0, 5000.0, 10.0);
-    delay_spin.set_title("Atraso por quadro (ms)");
+    delay_spin.set_title(&gettext("Atraso por quadro (ms)"));
     delay_spin.set_subtitle("100 ≈ 10 fps · 40 ≈ 25 fps · 1000 = 1 s");
     delay_spin.set_value(100.0);
 
@@ -5155,7 +5157,7 @@ fn build_animate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .build();
 
     let speed_spin = adw::SpinRow::with_range(1.0, 30.0, 1.0);
-    speed_spin.set_title("Velocidade do encoder");
+    speed_spin.set_title(&gettext("Velocidade do encoder"));
     speed_spin.set_subtitle("maior = mais rápido, paleta um pouco pior · padrão 10");
     speed_spin.set_value(10.0);
 
@@ -5235,7 +5237,7 @@ fn build_animate_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
-            status.set_text("Montando GIF…");
+            status.set_text(&gettext("Montando GIF…"));
 
             let files = files.clone();
             let status = status.clone();
@@ -5471,10 +5473,10 @@ fn build_remove_bg_dialog(
         apply_btn.clone().connect_clicked(move |_| {
             apply_btn.set_sensitive(false);
             // Cancelar continua disponível — vira "abortar e fechar".
-            cancel_btn.set_label("Cancelar");
+            cancel_btn.set_label(&gettext("Cancelar"));
             progress_bar.set_visible(true);
             progress_bar.set_fraction(0.0);
-            progress_bar.set_text(Some("Preparando…"));
+            progress_bar.set_text(Some(&gettext("Preparando…")));
             status.set_text("");
 
             // Rc<Vec<PathBuf>> não é Send — worker recebe um Vec próprio.
@@ -5585,7 +5587,7 @@ fn build_remove_bg_dialog(
                         let fail = outputs.len() - ok;
                         if fail == 0 {
                             status.set_text(&format!("Pronto: {ok} imagem(ns) gravada(s)"));
-                            progress_bar.set_text(Some("Concluído"));
+                            progress_bar.set_text(Some(&gettext("Concluído")));
                             progress_bar.add_css_class("success");
                             let single = originals.len() == 1;
                             if single {
@@ -5606,7 +5608,7 @@ fn build_remove_bg_dialog(
                         } else {
                             let detail = first_err.unwrap_or_default();
                             status.set_text(&format!("{ok} ok, {fail} falha(s). Último: {detail}"));
-                            progress_bar.set_text(Some("Com erros"));
+                            progress_bar.set_text(Some(&gettext("Com erros")));
                             progress_bar.add_css_class("error");
                             apply_btn.set_sensitive(true);
                             cancel_btn.set_label("Fechar");

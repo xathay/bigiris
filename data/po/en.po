@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: bigiris 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/xathay/bigiris/issues\n"
-"POT-Creation-Date: 2026-04-25 21:00+0000\n"
-"PO-Revision-Date: 2026-04-25 21:00+0000\n"
+"POT-Creation-Date: 2026-04-25 18:28-0300\n"
+"PO-Revision-Date: 2026-04-25 18:30-0300\n"
 "Last-Translator: Leonardo Athayde <leoathayde@gmail.com>\n"
 "Language-Team: English <en@li.org>\n"
 "Language: en\n"
@@ -16,6 +16,227 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/bigiris/src/gui.rs:334
+#: crates/bigiris/src/gui.rs:335
 msgid "Propriedades da imagem (Ctrl+I)"
 msgstr "Image properties (Ctrl+I)"
+
+#: crates/bigiris/src/gui.rs:930
+msgid "Slideshow: pausado"
+msgstr "Slideshow: paused"
+
+#: crates/bigiris/src/gui.rs:1145
+msgid "Salvar alterações?"
+msgstr "Save changes?"
+
+#: crates/bigiris/src/gui.rs:1146 crates/bigiris/src/gui.rs:1797
+#: crates/bigiris/src/gui.rs:5476
+msgid "Cancelar"
+msgstr "Cancel"
+
+#: crates/bigiris/src/gui.rs:1147
+msgid "Salvar"
+msgstr "Save"
+
+#: crates/bigiris/src/gui.rs:1159
+msgid "Salvo"
+msgstr "Saved"
+
+#: crates/bigiris/src/gui.rs:1166
+msgid "Falha ao salvar"
+msgstr "Save failed"
+
+#: crates/bigiris/src/gui.rs:1370
+msgid "Edições descartadas"
+msgstr "Edits discarded"
+
+#: crates/bigiris/src/gui.rs:1384
+msgid "Abrir imagens…"
+msgstr "Open images…"
+
+#: crates/bigiris/src/gui.rs:1385
+msgid "Copiar imagem"
+msgstr "Copy image"
+
+#: crates/bigiris/src/gui.rs:1389
+msgid "Imprimir…"
+msgstr "Print…"
+
+#: crates/bigiris/src/gui.rs:1395
+msgid "Girar à direita"
+msgstr "Rotate right"
+
+#: crates/bigiris/src/gui.rs:1396
+msgid "Girar à esquerda"
+msgstr "Rotate left"
+
+#: crates/bigiris/src/gui.rs:1397
+msgid "Girar 180°"
+msgstr "Rotate 180°"
+
+#: crates/bigiris/src/gui.rs:1398
+msgid "Espelhar horizontal"
+msgstr "Flip horizontal"
+
+#: crates/bigiris/src/gui.rs:1399
+msgid "Espelhar vertical"
+msgstr "Flip vertical"
+
+#: crates/bigiris/src/gui.rs:1400
+msgid "Recortar…"
+msgstr "Crop…"
+
+#: crates/bigiris/src/gui.rs:1406
+msgid "Remover fundo (IA)…"
+msgstr "Remove background (AI)…"
+
+#: crates/bigiris/src/gui.rs:1407
+msgid "Aumentar resolução…"
+msgstr "Upscale…"
+
+#: crates/bigiris/src/gui.rs:1411
+msgid "Salvar alterações"
+msgstr "Save changes"
+
+#: crates/bigiris/src/gui.rs:1415
+msgid "Mover para a lixeira"
+msgstr "Move to trash"
+
+#: crates/bigiris/src/gui.rs:1419
+msgid "Atalhos do teclado"
+msgstr "Keyboard shortcuts"
+
+#: crates/bigiris/src/gui.rs:1420
+msgid "Sobre o BigIris"
+msgstr "About BigIris"
+
+#: crates/bigiris/src/gui.rs:1425
+msgid "Menu principal"
+msgstr "Main menu"
+
+#: crates/bigiris/src/gui.rs:1792
+msgid "Mover para a lixeira?"
+msgstr "Move to trash?"
+
+#: crates/bigiris/src/gui.rs:1798
+msgid "Mover"
+msgstr "Move"
+
+#: crates/bigiris/src/gui.rs:2385 crates/bigiris/src/gui.rs:4653
+msgid "Qualidade (JPEG/lossy)"
+msgstr "Quality (JPEG/lossy)"
+
+#: crates/bigiris/src/gui.rs:2524
+msgid "Convertendo…"
+msgstr "Converting…"
+
+#: crates/bigiris/src/gui.rs:2575
+msgid "Aresta máxima"
+msgstr "Max edge"
+
+#: crates/bigiris/src/gui.rs:2580
+msgid "Porcentagem"
+msgstr "Percent"
+
+#: crates/bigiris/src/gui.rs:2585
+msgid "Largura"
+msgstr "Width"
+
+#: crates/bigiris/src/gui.rs:2588
+msgid "Altura"
+msgstr "Height"
+
+#: crates/bigiris/src/gui.rs:2592
+msgid "Largura máxima"
+msgstr "Max width"
+
+#: crates/bigiris/src/gui.rs:2595
+msgid "Altura máxima"
+msgstr "Max height"
+
+#: crates/bigiris/src/gui.rs:2834
+msgid "Redimensionando…"
+msgstr "Resizing…"
+
+#: crates/bigiris/src/gui.rs:3059
+msgid "Girando…"
+msgstr "Rotating…"
+
+#: crates/bigiris/src/gui.rs:3451
+msgid "X (px)"
+msgstr "X (px)"
+
+#: crates/bigiris/src/gui.rs:3455
+msgid "Y (px)"
+msgstr "Y (px)"
+
+#: crates/bigiris/src/gui.rs:3459
+msgid "Largura (px)"
+msgstr "Width (px)"
+
+#: crates/bigiris/src/gui.rs:3463
+msgid "Altura (px)"
+msgstr "Height (px)"
+
+#: crates/bigiris/src/gui.rs:3573
+msgid "Recortando…"
+msgstr "Cropping…"
+
+#: crates/bigiris/src/gui.rs:3809
+msgid "Aumentando…"
+msgstr "Upscaling…"
+
+#: crates/bigiris/src/gui.rs:3964
+msgid "Espelhando…"
+msgstr "Flipping…"
+
+#: crates/bigiris/src/gui.rs:4033
+msgid "Brilho"
+msgstr "Brightness"
+
+#: crates/bigiris/src/gui.rs:4038
+msgid "Contraste"
+msgstr "Contrast"
+
+#: crates/bigiris/src/gui.rs:4043
+msgid "Saturação"
+msgstr "Saturation"
+
+#: crates/bigiris/src/gui.rs:4048
+msgid "Gamma"
+msgstr "Gamma"
+
+#: crates/bigiris/src/gui.rs:4214
+msgid "Ajustando…"
+msgstr "Adjusting…"
+
+#: crates/bigiris/src/gui.rs:4857
+msgid "Iniciando…"
+msgstr "Starting…"
+
+#: crates/bigiris/src/gui.rs:4858
+msgid "Processando…"
+msgstr "Processing…"
+
+#: crates/bigiris/src/gui.rs:5144
+msgid "Atraso por quadro (ms)"
+msgstr "Frame delay (ms)"
+
+#: crates/bigiris/src/gui.rs:5160
+msgid "Velocidade do encoder"
+msgstr "Encoder speed"
+
+#: crates/bigiris/src/gui.rs:5240
+msgid "Montando GIF…"
+msgstr "Building GIF…"
+
+#: crates/bigiris/src/gui.rs:5479
+msgid "Preparando…"
+msgstr "Preparing…"
+
+#: crates/bigiris/src/gui.rs:5590
+msgid "Concluído"
+msgstr "Done"
+
+#: crates/bigiris/src/gui.rs:5611
+msgid "Com erros"
+msgstr "With errors"
