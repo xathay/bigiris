@@ -5,9 +5,12 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
   fmt:
@@ -20,8 +23,8 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
 
-  clippy:
-    name: clippy
+  clippy-headless:
+    name: clippy (headless)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +33,22 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  clippy-gui:
+    name: clippy (gui + ai)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install GTK4/libadwaita/dav1d dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libdav1d-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p bigiris --features "gui ai" --all-targets --locked -- -D warnings
 
   test:
     name: test
@@ -41,21 +60,53 @@ jobs:
       - run: cargo test --workspace --all-targets --locked
 
   build:
-    name: build (release)
+    name: build (release, gui + ai)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: install GTK4/libadwaita/dav1d dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libdav1d-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace --release --locked
+      # `ai` usa load-dynamic do ort: compila sem libonnxruntime presente,
+      # so precisaria do .so em runtime (e self-test nao carrega o backend).
+      - run: cargo build --release --locked --features "gui ai" -p bigiris
       - run: ./target/release/bigiris --self-test
 
+  appstream:
+    name: AppStream metainfo validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install appstreamcli
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends appstream
+      # --no-net evita lookup das URLs (homepage, bugtracker) que sao
+      # warnings esperados antes do repo virar publico. Trocar por
+      # `appstreamcli validate` (sem --no-net) quando o repo for publico.
+      - run: appstreamcli validate --no-net data/com.biglinux.Iris.metainfo.xml
+
+  desktop:
+    name: .desktop validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install desktop-file-utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils
+      - run: desktop-file-validate data/com.biglinux.Iris.desktop
+
   makepkg:
-    name: makepkg (Arch container)
+    name: makepkg (Arch container, PKGBUILD.local)
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - name: install deps
+      - name: install Arch deps
         run: |
           pacman -Syu --noconfirm --needed base-devel rust git sudo
           useradd -m builder
@@ -63,10 +114,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: chown for builder
         run: chown -R builder:builder .
+      # Usa PKGBUILD.local (build do checkout local, sem clone remoto).
+      # O PKGBUILD principal usa `source=git+https://github.com/xathay/bigiris`,
+      # que makepkg nao consegue clonar em repo privado sem credenciais.
       - name: makepkg
+        working-directory: pkgbuild
         run: |
-          cd pkgbuild
           sudo -u builder PKGEXT=.pkg.tar makepkg \
+            -p PKGBUILD.local \
             --noconfirm \
             --syncdeps \
             --skipchecksums \

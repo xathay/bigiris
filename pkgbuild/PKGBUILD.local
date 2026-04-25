@@ -4,9 +4,10 @@
 #   cd pkgbuild
 #   makepkg -si -p PKGBUILD.local
 #
-# Quando o projeto estiver publicado em github.com/biglinux/bigiris, use o
-# PKGBUILD principal (source=git+https://…) — este aqui e apenas um atalho
-# para testar o pacote antes do push.
+# Para builds que clonam direto do repo publicado (github.com/xathay/bigiris)
+# use o PKGBUILD principal (source=git+https://…) — este aqui e um atalho
+# para testar o pacote sem depender de push, e e o mesmo PKGBUILD usado pela
+# CI (que nao pode clonar um repo privado anonimamente).
 
 # Maintainer: Leonardo Athayde <leoathayde@gmail.com>
 # Contributor: Bruno Goncalves <bigbruno@gmail.com>
@@ -16,7 +17,7 @@ pkgver=0.1.0.local
 pkgrel=1
 arch=('x86_64')
 license=('GPL-3.0-or-later')
-url="https://github.com/biglinux/bigiris"
+url="https://github.com/xathay/bigiris"
 pkgdesc="Visualizador e conversor de imagens moderno (build local para testes)"
 depends=(
   'gcc-libs'
