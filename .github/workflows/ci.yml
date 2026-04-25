@@ -28,6 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # `image` is a non-optional dep with `avif-native` enabled, which
+      # pulls dav1d-sys. dav1d is an image codec, not a UI lib, so even
+      # the "headless" workspace build needs libdav1d-dev.
+      - name: install libdav1d-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdav1d-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -55,6 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: install libdav1d-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdav1d-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-targets --locked
