@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Dolphin / Konqueror service menus (`.desktop` files with
 //! `ServiceTypes=KonqPopupMenu/Plugin`). Native nested submenus via
 //! `X-KDE-Submenu=Íris/<submenu>`.

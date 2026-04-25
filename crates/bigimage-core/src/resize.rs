@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Single-file resize pipeline built on `fast_image_resize` (SIMD AVX2/NEON).
 //!
 //! Scope in this cut: mode-based resizing with the usual filter catalogue,

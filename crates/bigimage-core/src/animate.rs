@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Build animated GIFs (and, later, WebP/APNG) from a stack of still frames.
 //!
 //! Frames come in as file paths, so this module owns both the decode and

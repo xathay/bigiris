@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Encoder-side tuning knobs shared across every `*_file` pipeline:
 //! JPEG quality, PNG compression level, progressive flag, etc.
 //!

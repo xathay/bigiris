@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! bigimage-ai — AI inference backend for BigIris.
 //!
 //! The model download manager (`download` module) is always built —

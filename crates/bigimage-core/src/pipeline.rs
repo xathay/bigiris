@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Shared primitives used by every single-file transform pipeline
 //! (convert / resize / rotate / flip / crop). Extracted here so the op
 //! modules stay focused on the transform itself and pick up the same

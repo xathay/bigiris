@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! XFCE Thunar — merges our actions into `~/.config/Thunar/uca.xml`,
 //! preserving any custom actions the user added via Thunar's own GUI.
 //!

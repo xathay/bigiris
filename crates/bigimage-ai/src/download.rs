@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Download manager for IA model files.
 //!
 //! Every model we ship has a pinned `url` + `sha256`. Downloads are

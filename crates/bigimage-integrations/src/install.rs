@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Top-level `install` / `uninstall` orchestrator. Runs every supported
 //! file-manager generator in a fixed order, collects their results into a
 //! [`Report`], and surfaces which file managers are actually present on

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Install scope — maps `User` / `System` to filesystem roots so every
 //! file-manager generator agrees on where things live.
 

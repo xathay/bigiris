@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Filesystem helpers that refuse to follow symlinks at the final path
 //! component. Used by every per-file-manager installer that writes into
 //! `/usr/share/...` (or `~/.local/share/...`): if an attacker plants a

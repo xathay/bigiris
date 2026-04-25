@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Lossy rotation pipeline (90 / 180 / 270 via `image::imageops`).
 //!
 //! Arbitrary-angle rotation (with bicubic interpolation) and truly lossless

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Background removal — wraps a BiRefNet-lite ONNX model to produce an
 //! alpha mask, then composites it onto the original to yield an RGBA
 //! image whose background is transparent.

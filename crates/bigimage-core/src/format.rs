@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Target encoding formats and their metadata.
 //!
 //! Three tiers of support (see PLAN.md §3.2):

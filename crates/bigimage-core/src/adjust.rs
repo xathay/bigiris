@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Tone / colour adjustments: brightness, contrast, saturation, gamma.
 //!
 //! Applied in that order — matching the mental model most photo editors

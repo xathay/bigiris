@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Viewer "Íris" — GTK4 + libadwaita.
 //!
 //! MVP+zoom/pan: `gtk::Picture` wrapped in `gtk::ScrolledWindow`. `Fit` mode

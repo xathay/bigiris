@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Single-file conversion pipeline: decode → re-encode to a target format.
 //!
 //! The decode/encode/output-path primitives live in [`crate::pipeline`]; this

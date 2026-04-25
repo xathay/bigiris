@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Preview pipeline — stateful session that decodes a file once, keeps a
 //! downscaled thumbnail in memory, and re-applies arbitrary chains of
 //! transformations to that thumbnail on demand. The viewer/dialog code

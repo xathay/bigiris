@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! PCManFM-Qt / libfm — `.desktop` files with `Type=Action` in
 //! `~/.local/share/file-manager/actions/`. No runtime submenu support, so
 //! actions land flat, same convention as Nemo.

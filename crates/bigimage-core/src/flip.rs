@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Horizontal / vertical mirror pipeline.
 
 use std::path::Path;

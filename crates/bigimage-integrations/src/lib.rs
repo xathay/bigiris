@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! bigimage-integrations — installs/removes right-click actions in Linux file managers.
 //!
 //! Support matrix:

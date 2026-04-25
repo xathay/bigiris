@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! bigimage-core — shared image-processing library.
 //!
 //! Brand-agnostic on purpose: this crate must stay usable if the project ever

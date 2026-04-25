@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! The matrix of right-click actions the installer ships.
 //!
 //! Every action is a pure data record so each file-manager generator can

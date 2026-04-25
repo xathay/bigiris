@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! BigIris — modern image viewer and converter for Linux.
 //!
 //! Single binary, three entry modes:

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Nautilus — integração via `nautilus-python` extension.
 //!
 //! Historicamente instalávamos também um "scripts tree" em

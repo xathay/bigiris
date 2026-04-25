@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! EXIF / metadata inspection. Reads tags from image files via
 //! `kamadak-exif`, exposes a friendly [`Metadata`] record the GUI can
 //! render in sidebars, and surfaces the two signals we care about most
