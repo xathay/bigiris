@@ -94,7 +94,14 @@ struct ViewerState {
     picture: gtk::Picture,
     scroller: gtk::ScrolledWindow,
     title: adw::WindowTitle,
-    window: adw::ApplicationWindow,
+    /// Weak gobject ref to the owning window. Stored as `WeakRef` (not
+    /// a strong `adw::ApplicationWindow`) to break the strong-ref cycle
+    /// `window → controllers → closures → Rc<state> → state.window →
+    /// window`. Use [`ViewerState::window`] for a strong handle when a
+    /// callback runs (the window is always alive at that point); use
+    /// `window_weak.upgrade()` directly only when you need the
+    /// `Option<...>` semantics for graceful no-ops post-close.
+    window_weak: glib::WeakRef<adw::ApplicationWindow>,
     zoom: ZoomState,
     /// Natural pixel dimensions of the currently-loaded image.
     natural: (u32, u32),
@@ -157,6 +164,19 @@ enum ZoomState {
     Fit,
     /// Explicit scale factor; `1.0` = actual pixel size.
     Scale(f64),
+}
+
+impl ViewerState {
+    /// Return a strong handle to the owning window. Callbacks always run
+    /// while the window is still alive (GTK only dispatches signals to
+    /// live widgets), so the upgrade is guaranteed to succeed; we panic
+    /// on the impossible `None` rather than thread `Option` through
+    /// every single method call. Use `window_weak.upgrade()` directly
+    /// when you genuinely want the `Option<...>` semantics (e.g. inside
+    /// a deferred timeout that may fire post-close).
+    fn window(&self) -> adw::ApplicationWindow {
+        self.window_weak.upgrade().expect("window must outlive the state it owns")
+    }
 }
 
 fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::ApplicationWindow {
@@ -299,7 +319,7 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
         picture: picture.clone(),
         scroller: scroller.clone(),
         title: title.clone(),
-        window: window.clone(),
+        window_weak: gtk::glib::object::ObjectExt::downgrade(&window),
         zoom: ZoomState::Fit,
         natural: (0, 0),
         toolbar_view: toolbar_view.clone(),
@@ -404,7 +424,7 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
         let state = state.clone();
         double_click.connect_pressed(move |_, n_press, _, _| {
             if n_press == 2 {
-                let win = state.borrow().window.clone();
+                let win = state.borrow().window().clone();
                 win.set_fullscreened(!win.is_fullscreen());
             }
         });
@@ -569,7 +589,7 @@ fn toggle_theater(state: &Rc<RefCell<ViewerState>>) {
     let (window, enable) = {
         let mut s = state.borrow_mut();
         s.theater_enabled = !s.theater_enabled;
-        (s.window.clone(), s.theater_enabled)
+        (s.window().clone(), s.theater_enabled)
     };
     if enable {
         window.add_css_class("theater");
@@ -611,14 +631,14 @@ fn on_pointer_motion(state: &Rc<RefCell<ViewerState>>, y: f64) {
     // Always restore the cursor and restart its own idle timer.
     {
         let s = state.borrow();
-        s.window.set_cursor(None);
+        s.window().set_cursor(None);
     }
     cancel_cursor_hide(state);
     schedule_cursor_hide(state);
 
     let (window_h, pinned) = {
         let s = state.borrow();
-        (s.window.height() as f64, s.ui_pinned)
+        (s.window().height() as f64, s.ui_pinned)
     };
     if pinned {
         reveal_top(state);
@@ -741,7 +761,7 @@ fn schedule_cursor_hide(state: &Rc<RefCell<ViewerState>>) {
     // timer disparar enquanto o diálogo estiver aberto, o cursor sumiria
     // no próprio diálogo (o user não consegue clicar em "Detalhes" etc).
     // Pular a agenda enquanto houver diálogo visível na janela.
-    if s.window.visible_dialog().is_some() {
+    if s.window().visible_dialog().is_some() {
         return;
     }
     drop(s);
@@ -751,13 +771,13 @@ fn schedule_cursor_hide(state: &Rc<RefCell<ViewerState>>) {
             // Double-check na hora do disparo: user pode ter aberto um
             // diálogo nos últimos CURSOR_HIDE_MS ms.
             let s = clone.borrow_mut();
-            if s.window.visible_dialog().is_some() {
+            if s.window().visible_dialog().is_some() {
                 drop(s);
                 clone.borrow_mut().cursor_hide_source = None;
                 return;
             }
             let cursor = gdk::Cursor::from_name("none", None);
-            s.window.set_cursor(cursor.as_ref());
+            s.window().set_cursor(cursor.as_ref());
             drop(s);
             clone.borrow_mut().cursor_hide_source = None;
         });
@@ -792,7 +812,7 @@ fn toggle_ui_pin(state: &Rc<RefCell<ViewerState>>) {
         if !s.osd_label.label().is_empty() {
             s.osd_revealer.set_reveal_child(true);
         }
-        s.window.set_cursor(None);
+        s.window().set_cursor(None);
     } else {
         // Collapse back to the clean default. Upcoming motion events will
         // re-reveal edges on demand.
@@ -814,11 +834,11 @@ fn handle_key(
 
     match key {
         Key::Escape => {
-            state.borrow().window.close();
+            state.borrow().window().close();
             return glib::Propagation::Stop;
         }
         Key::F11 => {
-            let win = state.borrow().window.clone();
+            let win = state.borrow().window().clone();
             win.set_fullscreened(!win.is_fullscreen());
             return glib::Propagation::Stop;
         }
@@ -939,7 +959,7 @@ fn toggle_slideshow(state: &Rc<RefCell<ViewerState>>) {
         // já removidos do tree.
         {
             let s = clone.borrow();
-            if !s.window.is_visible() || s.files.is_empty() {
+            if !s.window().is_visible() || s.files.is_empty() {
                 drop(s);
                 clone.borrow_mut().slideshow_source = None;
                 return glib::ControlFlow::Break;
@@ -1108,7 +1128,7 @@ fn apply_op_to_image(img: image::DynamicImage, op: EditOp) -> image::DynamicImag
 fn sync_save_action(state: &Rc<RefCell<ViewerState>>) {
     let s = state.borrow();
     let has_ops = !s.pending_ops.is_empty();
-    if let Some(action) = s.window.lookup_action("save-edits") {
+    if let Some(action) = s.window().lookup_action("save-edits") {
         if let Some(simple) = action.downcast_ref::<gio::SimpleAction>() {
             simple.set_enabled(has_ops);
         }
@@ -1123,7 +1143,7 @@ fn save_edits(state: &Rc<RefCell<ViewerState>>) {
         if s.pending_ops.is_empty() || s.files.is_empty() {
             return;
         }
-        (s.window.clone(), s.files[s.idx].clone(), s.pending_ops.clone())
+        (s.window().clone(), s.files[s.idx].clone(), s.pending_ops.clone())
     };
     let name = path
         .file_name()
@@ -1671,7 +1691,7 @@ fn copy_current_to_clipboard(state: &Rc<RefCell<ViewerState>>) {
         if s.files.is_empty() {
             return;
         }
-        (s.window.clone(), s.files[s.idx].clone())
+        (s.window().clone(), s.files[s.idx].clone())
     };
     let Ok(img) = image::open(&path) else {
         tracing::warn!(?path, "copy: falha ao decodificar");
@@ -1695,7 +1715,7 @@ fn print_current(state: &Rc<RefCell<ViewerState>>) {
         if s.files.is_empty() {
             return;
         }
-        (s.window.clone(), s.files[s.idx].clone())
+        (s.window().clone(), s.files[s.idx].clone())
     };
     let op = gtk::PrintOperation::new();
     op.set_n_pages(1);
@@ -1758,7 +1778,7 @@ fn show_metadata_for_current(state: &Rc<RefCell<ViewerState>>) {
         if s.files.is_empty() {
             return;
         }
-        (s.window.clone(), s.files[s.idx].clone())
+        (s.window().clone(), s.files[s.idx].clone())
     };
     let Some(app) = window.application().and_downcast::<adw::Application>() else { return };
     let dialog = build_properties_window(&app, &path);
@@ -1783,7 +1803,7 @@ fn trash_current(state: &Rc<RefCell<ViewerState>>) {
         if s.files.is_empty() {
             return;
         }
-        (s.window.clone(), s.files[s.idx].clone())
+        (s.window().clone(), s.files[s.idx].clone())
     };
     let name = path
         .file_name()
