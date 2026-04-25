@@ -6,7 +6,7 @@
 //! so the scroll view can give actual scrollbars and pan behaviour.
 //!
 //! Gesture-zoom (pinch), cursor-centred zoom, film strip, EXIF sidebar and
-//! the glycin decoder swap are tracked in PLAN.md §5.2 for follow-ups.
+//! the glycin decoder swap are planned for the M2 milestone.
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};

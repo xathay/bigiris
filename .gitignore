@@ -44,7 +44,9 @@ pkgbuild/pkg/
 # Modelos de IA baixados em dev
 /models/
 
-# Itens locais (nao publicar)
+# Itens locais (nao publicar — roadmap, design notes, reflexoes internas)
 /loop.gif
 /prompt_incio_projeto.md
+/PLAN.md
+/docs/DESIGN-M2.md
 /.claude/
