@@ -2243,10 +2243,9 @@ fn compute_histogram(rgba: &[u8]) -> [u32; 768] {
 // --------------------------------------------------------------------------
 
 use bigimage_core::{
-    adjust_file, convert_file, convert_file_to, crop_file, flip_file, make_gif, metadata,
-    resize_file, rotate_file, AdjustOps, AnimateOptions, ConvertOutcome, CropRect, EncodeOptions,
-    Filter, FlipAxis, Format, LoopMode, OverwritePolicy, PreviewOp, PreviewSession, ResizeMode,
-    Rotation,
+    adjust_file, convert_file_to, crop_file, flip_file, make_gif, metadata, resize_file,
+    rotate_file, AdjustOps, AnimateOptions, ConvertOutcome, CropRect, EncodeOptions, Filter,
+    FlipAxis, Format, LoopMode, OverwritePolicy, PreviewOp, PreviewSession, ResizeMode, Rotation,
 };
 use image::DynamicImage;
 use std::time::Duration;
@@ -2421,17 +2420,52 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
 
     let optimize_switch = adw::SwitchRow::builder()
         .title(gettext("Otimizar tamanho"))
-        .subtitle("PNG com compressão máxima; mais lento, arquivo menor")
+        .subtitle("PNG com compressão máxima; AVIF mais lento; arquivo menor")
         .active(false)
         .build();
 
-    let group = adw::PreferencesGroup::new();
-    group.add(&files_row);
-    group.add(&format_row);
-    group.add(&quality_spin);
-    group.add(&progressive_switch);
-    group.add(&optimize_switch);
-    group.add(&overwrite_row);
+    // Advanced opts under an ExpanderRow so the primary view stays
+    // focused on Format → Quality → Output. JPEG progressivo and
+    // "Otimizar tamanho" are niche enough that the average user never
+    // needs to see them — but power users still find them in one tap.
+    let advanced_expander = adw::ExpanderRow::builder()
+        .title(gettext("Avançado"))
+        .subtitle(gettext("JPEG progressivo e otimização do encoder"))
+        .build();
+    advanced_expander.add_row(&progressive_switch);
+    advanced_expander.add_row(&optimize_switch);
+
+    // ── Conversão group ───────────────────────────────────────────────
+    let conv_group = adw::PreferencesGroup::builder().title(gettext("Conversão")).build();
+    conv_group.add(&files_row);
+    conv_group.add(&format_row);
+    conv_group.add(&quality_spin);
+    conv_group.add(&advanced_expander);
+
+    // ── Destino group: overwrite policy + optional output folder ──────
+    let dest_group = adw::PreferencesGroup::builder().title(gettext("Destino")).build();
+    dest_group.add(&overwrite_row);
+
+    // Pasta de saída picker (mirror do Batch dialog) — None = mesma
+    // pasta do arquivo de origem (comportamento histórico).
+    let output_dir: Rc<RefCell<Option<PathBuf>>> = Rc::new(RefCell::new(None));
+    let folder_row = adw::ActionRow::builder()
+        .title(gettext("Pasta de saída"))
+        .subtitle(gettext("Mesma pasta do arquivo de origem"))
+        .activatable(true)
+        .build();
+    let folder_icon = gtk::Image::from_icon_name("folder-open-symbolic");
+    folder_icon.add_css_class("dim-label");
+    folder_row.add_suffix(&folder_icon);
+    let clear_folder_btn = gtk::Button::builder()
+        .icon_name("edit-clear-symbolic")
+        .tooltip_text("Usar a mesma pasta do arquivo de origem")
+        .css_classes(["flat"])
+        .valign(gtk::Align::Center)
+        .visible(false)
+        .build();
+    folder_row.add_suffix(&clear_folder_btn);
+    dest_group.add(&folder_row);
 
     let status = gtk::Label::builder().label("").wrap(true).xalign(0.0).build();
     status.add_css_class("dim-label");
@@ -2497,10 +2531,32 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         .build();
     content.append(&gps_banner);
     content.append(&alpha_banner);
-    content.append(&group);
+    content.append(&conv_group);
+    content.append(&dest_group);
     content.append(&status);
     content.append(&actions);
     content.set_size_request(420, -1);
+
+    // Wire up the output-folder picker + reset button.
+    {
+        let output_dir = output_dir.clone();
+        let folder_row_for_pick = folder_row.clone();
+        let clear_btn = clear_folder_btn.clone();
+        let window = window.clone();
+        folder_row.clone().connect_activated(move |_| {
+            pick_output_folder(&window, &output_dir, &folder_row_for_pick, &clear_btn);
+        });
+    }
+    {
+        let output_dir = output_dir.clone();
+        let folder_row = folder_row.clone();
+        let clear_btn = clear_folder_btn.clone();
+        clear_folder_btn.connect_clicked(move |_| {
+            *output_dir.borrow_mut() = None;
+            folder_row.set_subtitle(&gettext("Mesma pasta do arquivo de origem"));
+            clear_btn.set_visible(false);
+        });
+    }
 
     let main_box =
         gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(16).build();
@@ -2537,6 +2593,7 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
         let apply_btn = apply_btn.clone();
         let cancel_btn = cancel_btn.clone();
         let window = window.clone();
+        let output_dir = output_dir.clone();
         apply_btn.clone().connect_clicked(move |_| {
             let fmt_idx = format_row.selected() as usize;
             let policy_idx = overwrite_row.selected() as usize;
@@ -2548,6 +2605,10 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
                 optimize: optimize_switch.is_active(),
                 ..EncodeOptions::default()
             };
+            // Snapshot the chosen folder once at submit time — the
+            // picker can change while the worker is running and the
+            // worker thread mustn't peek into Rc<RefCell<...>>.
+            let out_dir_snapshot = output_dir.borrow().clone();
 
             apply_btn.set_sensitive(false);
             cancel_btn.set_sensitive(false);
@@ -2556,7 +2617,7 @@ fn build_convert_dialog(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw:
             let work_files: Vec<PathBuf> = (*files).clone();
             run_batch_async(
                 work_files,
-                move |f| convert_file(f, fmt, &opts, policy),
+                move |f| convert_file_to(f, out_dir_snapshot.as_deref(), fmt, &opts, policy),
                 gettext("Convertendo"),
                 status.clone(),
                 apply_btn.clone(),
