@@ -138,6 +138,15 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel rust git sudo
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          # Force bfd as the final linker. rustc on Arch defaults to
+          # ld.lld, and lld in the archlinux:latest container fails to
+          # resolve C symbols bundled inside Rust rlibs (mimalloc here,
+          # previously ring) — `mi_free`, `mi_malloc_aligned` etc. show
+          # up undefined even though libmimalloc-sys built fine. Local
+          # Manjaro/Arch builds work because makepkg.conf there has no
+          # `-fuse-ld=lld`, so gcc falls back to bfd. Mirror that.
+          echo 'RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=bfd"' \
+            >> /etc/makepkg.conf
       - uses: actions/checkout@v4
       - name: chown for builder
         run: chown -R builder:builder .
