@@ -138,35 +138,6 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel rust git sudo
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          # Force the final linker to bfd. Stable Rust 1.85+ defaults the
-          # x86_64-unknown-linux-gnu target's linker-flavor to `gnu-lld-cc`,
-          # which injects `-fuse-ld=lld` into the gcc invocation *after*
-          # any user `-Clink-arg=-fuse-ld=bfd`, so gcc's last-wins
-          # resolution picks lld. The unstable `gnu-cc` flavor would fix
-          # this but isn't available on stable. lld in archlinux:latest
-          # fails to resolve C symbols bundled inside Rust rlibs (mimalloc
-          # here, previously ring) — `mi_free`, `mi_malloc_aligned` etc.
-          # show up undefined even though libmimalloc-sys built fine.
-          #
-          # Workaround: thin wrapper that strips `-fuse-ld=*` from the
-          # args and re-adds `-fuse-ld=bfd` at the very end. Point rustc
-          # at it via `-C linker=`.
-          cat > /usr/local/bin/cc-bfd <<'WRAP'
-          #!/bin/bash
-          args=()
-          for a in "$@"; do
-            case "$a" in
-              -fuse-ld=*) ;;
-              *) args+=("$a") ;;
-            esac
-          done
-          exec /usr/bin/cc "${args[@]}" -fuse-ld=bfd
-          WRAP
-          chmod +x /usr/local/bin/cc-bfd
-          for f in /etc/makepkg.conf /etc/makepkg.conf.d/rust.conf; do
-            [ -f "$f" ] || continue
-            echo 'RUSTFLAGS+=" -C linker=/usr/local/bin/cc-bfd"' >> "$f"
-          done
       - uses: actions/checkout@v4
       - name: chown for builder
         run: chown -R builder:builder .
@@ -184,22 +155,3 @@ jobs:
             --skipinteg \
             --nocheck \
             --clean
-      - name: diagnose rlib bundling on failure
-        if: failure()
-        working-directory: pkgbuild
-        run: |
-          set -x
-          rlib=$(find src/target -name 'liblibmimalloc_sys-*.rlib' | head -1)
-          echo "rlib=$rlib"
-          if [ -n "$rlib" ]; then
-            ar t "$rlib"
-            tmp=$(mktemp -d)
-            (cd "$tmp" && ar x "$OLDPWD/$rlib" && ls -la && \
-              for o in *.o; do
-                printf "\n=== nm %s | mi_ ===\n" "$o"
-                nm "$o" 2>/dev/null | grep -E "mi_free|mi_malloc_aligned" | head -5 || echo "(no mi_ symbols)"
-              done)
-          fi
-          out=$(find src/target -path '*libmimalloc-sys-*/out' -type d | head -1)
-          echo "out=$out"
-          [ -n "$out" ] && ls -la "$out" && (cd "$out" && for a in *.a; do echo "=== $a ==="; ar t "$a" | head -10; done)
