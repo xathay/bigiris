@@ -18,7 +18,13 @@ Substitui o ServiceMenu *ReImage* (KDE) e atualiza o estado da arte de viewers c
 
 ## O que faz diferente
 
-**Batch responsivo no nível do IrfanView.** Cada diálogo Prisma fan-outa o trabalho num **pool de worker threads** (= `num_cpus − 1`, deixa um core para a GUI) coordenado por `AtomicUsize` sem Mutex no caminho quente. Numa CPU 16-thread, 100 AVIFs → JPEG terminam em segundos; a janela continua arrastável, mostra `Convertendo 47/100 — IMG_4823.jpg` ao vivo, e fecha mid-batch sem GTK marcar "Não respondendo". Detalhes em [`crates/bigiris/src/gui/batch_runner.rs`](crates/bigiris/src/gui/batch_runner.rs).
+### Performance
+
+**Batch paralelo no nível do IrfanView.** Cada diálogo Prisma fan-outa o trabalho num pool de worker threads (= `num_cpus − 1`, deixa um core pra GUI) coordenado por `AtomicUsize` sem Mutex no caminho quente. Numa CPU 16-thread, 100 AVIFs → JPEG terminam em segundos; janela arrastável, progresso ao vivo, cancelável mid-batch sem GTK marcar "Não respondendo". Implementação em [`crates/bigiris/src/gui/batch_runner.rs`](crates/bigiris/src/gui/batch_runner.rs).
+
+**Encoder rápido por padrão.** AVIF emitido com ravif `speed=8` (vs. default=4 do crate `image`) — ~3× mais rápido sem perda visual perceptível. PNG default usa compressão padrão; JPEG quality controlável pelo spinner. O toggle **"Otimizar tamanho"** no diálogo Avançado força speed=4 + PNG `Best` quando o usuário troca tempo por tamanho.
+
+**Allocator multi-thread.** `mimalloc` como `#[global_allocator]` — heap por thread sem lock contention nas alocações que o batch faz por arquivo (decode → RGBA buffer → encode). 5-15% extra de wall-clock em CPUs ≥ 8 cores.
 
 **Stats pós-batch.** Quando o lote termina, o status row mostra tempo total + bytes antes/depois + médias por arquivo:
 
@@ -27,61 +33,99 @@ Concluído em 8.2 s · 23 gravado(s), 0 ignorado(s), 0 falha(s)
 8.5 MB → 1.2 MB (−86%) · média por arquivo 378 KB → 53 KB
 ```
 
-**Encoder rápido por padrão.** AVIF emitido com ravif speed=8 (vs. default=4 do crate `image`) — ~3x mais rápido sem prejuízo perceptível em screenshots/fotos. Toggle "Otimizar tamanho" no diálogo cai pra speed=4 (lento, mais comprimido). PNG idem: nível default rápido, "Otimizar" sobe pra `Best`. JPEG quality controlável pelo spinner.
+**Memória constante em batches grandes.** Um arquivo decodificado por vez por worker; encoder fecha o anterior antes do próximo abrir. SIMD para resize via [`fast_image_resize`](https://docs.rs/fast_image_resize). Decode caps preventivos (1 GiB / 256 MP) refusam pixel bombs antes da descompressão.
 
-**Allocator multi-thread.** `mimalloc` como `#[global_allocator]` — heap por-thread sem lock contention nas alocações que o batch faz a cada arquivo (decode → RGBA buffer → encode). 5-15% extra na wall-clock em CPUs ≥8 cores.
+### Privacidade & segurança
 
-**Privacidade real, não slogan.** Remover fundo com **BiRefNet-lite** (licença **MIT**) roda 100% offline. A imagem nunca sai do disco — sem upload, sem conta, sem API externa, sem créditos. EXIF/GPS/IPTC/XMP **strip-by-default** no encode (`EncodeOptions::strip_metadata = true`). Detalhes em [docs/IA-LOCAL.md](docs/IA-LOCAL.md).
+**IA local de verdade.** Remover fundo com **BiRefNet-lite** (MIT) roda 100% offline. A imagem nunca sai do disco — sem upload, sem conta, sem API, sem créditos. Modelo (~224 MB) baixado uma única vez do mirror oficial da comunidade ONNX, **verificado por SHA-256** contra o hash gravado no binário. Allowlist FOSS rígida (MIT/Apache-2.0/BSD/MPL-2.0/CC0); pesos com cláusula *non-commercial* recusados antes do download. Sessão ONNX cacheada entre arquivos do mesmo lote — modelo carrega 1× pra batch de N arquivos. Detalhes em [docs/IA-LOCAL.md](docs/IA-LOCAL.md).
 
-**Cadeia de confiança verificável.** Pesos pinados por **SHA-256** contra o hash gravado no binário. Allowlist FOSS rígida (MIT, Apache-2.0, BSD, MPL-2.0, CC0); modelos com cláusula *non-commercial* escondida são recusados antes do download. Sessão ONNX construída uma única vez por lote (cache de ~224 MB de pesos), com `intra_threads = num_cpus − 1` para não estrangular o resto do desktop. Ver [`crates/bigimage-ai/src/background.rs`](crates/bigimage-ai/src/background.rs).
+**EXIF/GPS strip-by-default.** `EncodeOptions::strip_metadata = true` é o contrato do encode. O pipeline já dropa EXIF/IPTC/XMP/GPS implicitamente (decode → `DynamicImage` → encode), e o flag explícito existe pra que um futuro toggle "preservar" nunca regrida silenciosamente.
 
-**Endurecido contra entrada hostil.** Decode rejeita arquivos > 1 GiB e imagens > 256 megapixels antes de descomprimir (defesa contra decode/pixel bombs). Download de modelo aborta se mirror enviar > 16 MiB acima do esperado. Service menus escritos com `O_NOFOLLOW` para impedir symlink-follow durante `sudo install-integrations --system`. Comandos do Thunar UCA empacotados em `sh -c '… "$@"' …` para que filenames jamais sejam reinterpretados pelo shell. TLS via `native-tls` (OpenSSL do sistema) — sem ring no caminho de build. Mais em [SECURITY.md](SECURITY.md).
+**Endurecido contra entrada hostil.**
 
-**Stack 2026.** Rust stable (≥ 1.83), GTK4, libadwaita. `#![forbid(unsafe_code)]` em todos os crates. SIMD para resize via `fast_image_resize`. Decodificação sandboxed via `glycin` (M2). Memória constante em batches gigantes — um arquivo decodificado por vez, encoder fecha o anterior antes do próximo abrir.
+- **Decode caps** — arquivos > 1 GiB e imagens > 256 MP rejeitados antes de descomprimir.
+- **Download cap** — mirror enviando > 16 MiB acima do esperado aborta com cleanup do `.part`.
+- **`O_NOFOLLOW`** em todas as escritas dos service menus — `sudo install-integrations --system` não segue symlinks plantados.
+- **Thunar UCA** empacotado em `sh -c '… "$@"' progname %F` — filenames jamais reinterpretados pelo shell.
+- **TLS** via `native-tls` (OpenSSL do sistema), sem `ring` no caminho de build, sem `danger_*` desativando validação.
+- **`#![forbid(unsafe_code)]`** em todos os crates.
 
-**Toda funcionalidade tem CLI espelhada da GUI.** `bigiris convert ...`, `bigiris resize ...`, `bigiris remove-bg ...`, `bigiris adjust ...`. CI/CD testa exatamente o que o usuário usa — sem regressão de feature por divergência de path.
+Política de reporte em [SECURITY.md](SECURITY.md).
+
+### UX & integração
 
 **Single-binary, módulos por feature flag.** Um executável carrega CLI, viewer GTK4 e diálogos Prisma. IA atrás do feature `ai`; integrações de file manager geradas pelo próprio binário (`bigiris install-integrations --system|--user`).
 
-**Integração nativa em 6 gerenciadores.** Dolphin, Nautilus (extensão Python top-level), Nemo, Thunar (merge `uca.xml`), PCManFM-Qt, elementary Files. Clique direito em qualquer imagem mostra:
+**CLI espelhada da GUI.** `bigiris convert ...`, `bigiris resize ...`, `bigiris remove-bg ...`, `bigiris adjust ...`. CI/CD testa exatamente o que o usuário usa.
+
+**6 gerenciadores integrados.** Dolphin, Nautilus (extensão Python top-level), Nemo, Thunar (merge `uca.xml`), PCManFM-Qt, elementary Files. Clique direito em qualquer imagem:
 
 ```
 BigIris ▸  Visualizar em BigIris                  ← top: 1-clique pra abrir
            Converter      ▸ PNG · JPG · WebP · AVIF · TIFF · Mais opções…
-           Redimensionar  ▸ 25% · 50% · 200% · HD (1920) · 4K (3840) · Mais opções…
+           Redimensionar  ▸ 25% · 50% · 200% · HD · 4K · Mais opções…
            Girar          ▸ 90° · 180° · 270° · Auto (EXIF) · Mais opções…
            Espelhar       ▸ Horizontal · Vertical · Mais opções…
            Ajustar cores  ▸ Brilho ± · Contraste + · P&B · Vivas · Mais opções…
-           Para web       ▸ WhatsApp · Instagram · Facebook · Twitter · Telegram · Discord · Otimizar PNG
+           Para web       ▸ WhatsApp · Instagram · Facebook · Twitter · Telegram · Discord · PNG otim.
            Metadados      ▸ Ver · Remover tudo (re-encode limpo)
            Utilidades     ▸ Lote · GIF animado · Comparar
            IA             ▸ Remover fundo (BiRefNet)
-           PDF            ▸ Converter (LibreOffice headless)  ← em documentos, não imagens
+           PDF            ▸ Converter (LibreOffice headless)  ← em documentos
 ```
 
-Diálogos Prisma seguem padrão Adwaita: `PreferencesGroup` por seção, `ExpanderRow` "Avançado" para opções de nicho (JPEG progressivo, otimização do encoder), picker de pasta de saída opcional. Setup primário fica em **Formato → Qualidade → Destino**.
+**Diálogos Prisma seguem GNOME HIG.** `PreferencesGroup` por seção, `ExpanderRow` "Avançado" para opções de nicho (JPEG progressivo, otimização do encoder), picker de pasta de saída opcional. Tela primária fica em **Formato → Qualidade → Destino**.
 
-**13 formatos Tier-1 nativos** — PNG, JPG, WebP, **AVIF (default)**, TIFF, BMP, GIF, ICO, PNM, TGA, QOI, HDR, OpenEXR. HEIC, JPEG XL e RAW por trás de feature flags. Sem regressão para o legado útil que o IrfanView popularizou.
+**13 formatos Tier-1 nativos** — PNG, JPG, WebP, **AVIF (default)**, TIFF, BMP, GIF, ICO, PNM, TGA, QOI, HDR, OpenEXR. HEIC, JPEG XL e RAW por trás de feature flags.
 
-**i18n com gettext.** Source pt-BR, catálogos `data/po/<lang>.po`. `data/po/en.po` cobre 90 strings de UI (cresce a cada release). Helper `data/po/regen-pot.sh` regenera o template via `xgettext` e propaga via `msgmerge`.
+**i18n com gettext.** Source pt-BR, catálogos `data/po/<lang>.po`. `data/po/en.po` cobre 90 msgids de UI; helper `data/po/regen-pot.sh` regenera o template via `xgettext` e propaga via `msgmerge`.
 
 ## Status
 
+#### Funcionalidade
+
 | Bloco | Estado |
 |---|---|
-| CLI: `convert` · `resize` · `rotate` · `flip` · `crop` · `adjust` · `remove-bg` · `upscale` · `animate` · `to-pdf` · `install-integrations` | ✓ |
+| CLI completo: `convert` · `resize` · `rotate` · `flip` · `crop` · `adjust` · `remove-bg` · `upscale` · `animate` · `to-pdf` · `install-integrations` | ✓ |
 | Viewer GTK4: zoom cursor-anchored · drag pan · navegação · fullscreen · slideshow · film strip · histograma · modo teatro | ✓ |
-| Diálogos Prisma: convert · resize · rotate · flip · crop · adjust · upscale · animate · batch · compare · metadata · remove-bg | ✓ |
-| Worker pool paralelo (cores − 1) em **todos** os batches Prisma + Animate · UI nunca freezea | ✓ |
-| Stats pós-batch: tempo total · bytes in/out · % delta · média por arquivo | ✓ |
-| AVIF speed=8 default · `optimize=true` clamp para speed=4 · `mimalloc` global allocator | ✓ |
-| 6 gerenciadores integrados · `O_NOFOLLOW` no install · Nautilus user-install detecta system-wide e evita menu duplicado | ✓ |
-| IA local BiRefNet-lite (MIT) — sessão ORT cacheada entre arquivos, intra-threads capadas | ✓ |
+| 12 diálogos Prisma: convert · resize · rotate · flip · crop · adjust · upscale · animate · batch · compare · metadata · remove-bg | ✓ |
+| 13 formatos Tier-1 (PNG · JPG · WebP · AVIF · TIFF · BMP · GIF · ICO · PNM · TGA · QOI · HDR · EXR) | ✓ |
+
+#### Performance
+
+| Bloco | Estado |
+|---|---|
+| Worker pool paralelo (cores − 1) em todos os batches Prisma + Animate; UI nunca freezea | ✓ |
+| `mimalloc` global allocator + AVIF speed=8 default (clamp pra 4 quando "Otimizar") | ✓ |
+| Stats pós-batch: tempo · bytes in/out · % delta · média por arquivo | ✓ |
+| Sessão ORT cacheada entre arquivos do mesmo lote; intra-threads capadas | ✓ |
+| SIMD para resize via `fast_image_resize`; decode caps (1 GiB / 256 MP) | ✓ |
+
+#### Segurança
+
+| Bloco | Estado |
+|---|---|
+| `#![forbid(unsafe_code)]` em todos os crates · SPDX em todo source | ✓ |
+| Decode caps · download cap (16 MiB margem) · `O_NOFOLLOW` no install · Thunar shell quoting | ✓ |
+| EXIF/GPS strip-by-default · TLS via `native-tls` (sem ring) | ✓ |
+| FOSS license allowlist + SHA-256 nos modelos IA | ✓ |
+| `SECURITY.md` · `CONTRIBUTING.md` · GitHub Security Advisories habilitado | ✓ |
+
+#### Empacotamento
+
+| Bloco | Estado |
+|---|---|
+| 6 gerenciadores de arquivos integrados · Nautilus detecta system-wide e evita menu duplicado | ✓ |
 | AppStream metainfo · `.desktop` validado · ícone hicolor SVG · `<screenshots>` + `<releases>` | ✓ |
-| i18n: 90 msgids em `pt-BR` (source) + `en.po` completo | ✓ |
-| Hardening: `#![forbid(unsafe_code)]` · decode caps (1 GiB / 256 MP) · download cap (16 MiB margem) · symlink protection · Thunar shell quoting · EXIF strip-by-default · SPDX em todo source | ✓ |
-| PKGBUILD principal + `.local` · CI 9 jobs · 141 testes | ✓ |
-| Glycin sandboxed decode · MDI · EXIF sidebar · preview ao vivo | M2 |
+| i18n: 90 msgids em pt-BR (source) + `en.po` completo | ✓ |
+| PKGBUILD principal (`xathay/bigiris`) + `.local` (build do checkout) | ✓ |
+| CI: 9 jobs (fmt · 2× clippy · 2× test · build release · AppStream · desktop · makepkg) · 141 testes | ✓ |
+
+#### Roadmap (M2)
+
+| Bloco | Estado |
+|---|---|
+| Glycin sandboxed decode · MDI · EXIF sidebar · preview ao vivo | em planejamento |
 
 ## Remover fundo com IA — local, privado, sem conta
 
