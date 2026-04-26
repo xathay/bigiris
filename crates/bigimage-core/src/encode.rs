@@ -33,11 +33,38 @@ pub struct EncodeOptions {
     /// regression test in `tests::default_options_strip_metadata` exists
     /// to fail if the default ever silently flips to `false`.
     pub strip_metadata: bool,
+    /// AVIF encoder speed `1..=10` (1 = slowest / smallest file, 10 =
+    /// fastest / larger file). The `image` crate defaults to 4
+    /// (balanced — sits ~5–10× slower than 8 on PNG/JPG screenshots).
+    /// We default to **8** so a hundred-file batch finishes in seconds
+    /// instead of half an hour. The `optimize` flag clamps the
+    /// effective speed at 4 to recover the better compression when the
+    /// user opts in.
+    pub avif_speed: u8,
 }
 
 impl Default for EncodeOptions {
     fn default() -> Self {
-        Self { quality: None, progressive: false, optimize: false, strip_metadata: true }
+        Self {
+            quality: None,
+            progressive: false,
+            optimize: false,
+            strip_metadata: true,
+            avif_speed: 8,
+        }
+    }
+}
+
+impl EncodeOptions {
+    /// Effective AVIF speed: `min(avif_speed, 4)` when `optimize` is
+    /// set so the user's "smaller file" choice survives even if a
+    /// caller raised `avif_speed` for batch throughput.
+    pub fn effective_avif_speed(&self) -> u8 {
+        if self.optimize {
+            self.avif_speed.min(4)
+        } else {
+            self.avif_speed
+        }
     }
 }
 
@@ -71,5 +98,29 @@ mod tests {
     #[test]
     fn web_preset_strips_metadata() {
         assert!(EncodeOptions::web_preset().strip_metadata);
+    }
+
+    #[test]
+    fn default_avif_speed_is_fast() {
+        // Default biased toward batch throughput: speed 8 of 1..10.
+        // Any change here means a hundred-file AVIF batch slows down
+        // by a noticeable factor — keep 8 unless the perf review says
+        // otherwise.
+        assert_eq!(EncodeOptions::default().avif_speed, 8);
+        assert_eq!(EncodeOptions::default().effective_avif_speed(), 8);
+    }
+
+    #[test]
+    fn optimize_clamps_avif_speed_for_smaller_files() {
+        let opts = EncodeOptions { optimize: true, ..EncodeOptions::default() };
+        assert_eq!(
+            opts.effective_avif_speed(),
+            4,
+            "optimize should slow AVIF to recover compression"
+        );
+
+        // Even if a caller cranks avif_speed up, optimize wins.
+        let opts = EncodeOptions { optimize: true, avif_speed: 10, ..EncodeOptions::default() };
+        assert_eq!(opts.effective_avif_speed(), 4);
     }
 }

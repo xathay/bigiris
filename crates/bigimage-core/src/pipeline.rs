@@ -207,6 +207,31 @@ fn encode_to_path(
             )?;
             Ok(())
         }
+        Format::Avif => {
+            // `image::save_with_format(Avif, …)` calls
+            // `AvifEncoder::new(writer)` which defaults to speed=4. On
+            // screenshots that's ~5–10× slower than speed=8, turning a
+            // 100-file batch into half an hour of waiting. Drive the
+            // encoder directly so the EncodeOptions::avif_speed knob
+            // (default 8, or 4 when `optimize=true`) actually reaches
+            // ravif. AVIF is encoded from RGBA to preserve the alpha
+            // channel screenshots routinely have.
+            use image::codecs::avif::AvifEncoder;
+            use image::ImageEncoder;
+            let file = std::fs::File::create(output)?;
+            let mut writer = std::io::BufWriter::new(file);
+            let speed = opts.effective_avif_speed();
+            let quality = opts.quality.unwrap_or(80);
+            let encoder = AvifEncoder::new_with_speed_quality(&mut writer, speed, quality);
+            let rgba = img.to_rgba8();
+            encoder.write_image(
+                rgba.as_raw(),
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba8,
+            )?;
+            Ok(())
+        }
         Format::Png if opts.optimize => {
             use image::codecs::png::{CompressionType, FilterType, PngEncoder};
             use image::ImageEncoder;
