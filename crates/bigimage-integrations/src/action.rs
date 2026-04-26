@@ -112,10 +112,25 @@ pub const SUB_PDF: Submenu = Submenu { id: "pdf", label: "PDF", icon: "applicati
 
 /// All actions to install, in a display-friendly order.
 ///
+/// **Order matters** — file managers render the menu in the order this
+/// const declares the actions. The first entry here is the first row
+/// the user sees in the right-click menu, so `view` (the most-frequent
+/// single-click action: open the image in BigIris) deliberately sits
+/// at the top, ahead of the multi-step Convert/Resize/etc. submenus.
+///
 /// `--overwrite skip` means the quick actions never clobber an existing
 /// sibling file; users who want to replace or increment go through the
-/// modal "Personalizar…" path (wired up once `--dialog=*` lands).
+/// modal "Personalizar…" path.
 pub const ACTIONS: &[Action] = &[
+    // Visualizar (top-level, 1-click) — most common entry point.
+    Action {
+        id: "view",
+        submenu: None,
+        label: "Visualizar em BigIris",
+        command: "bigiris %F",
+        icon: "com.biglinux.Iris",
+        mime_types: IMAGE_MIME,
+    },
     // Convert ▸
     Action {
         id: "convert-png",
@@ -455,15 +470,6 @@ pub const ACTIONS: &[Action] = &[
         command: "bigiris to-pdf %F",
         icon: "application-pdf-symbolic",
         mime_types: DOC_MIME,
-    },
-    // Visualizar (top-level)
-    Action {
-        id: "view",
-        submenu: None,
-        label: "Visualizar em BigIris",
-        command: "bigiris %F",
-        icon: "com.biglinux.Iris",
-        mime_types: IMAGE_MIME,
     },
 ];
 
