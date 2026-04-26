@@ -2894,7 +2894,7 @@ fn files_subtitle(files: &[PathBuf]) -> String {
 }
 
 mod batch_runner;
-use batch_runner::{finish_dialog, run_batch_async};
+use batch_runner::run_batch_async;
 
 // ---------------------------------------------------------------------------
 // Rotate / Flip / Adjust dialogs — built on top of the same run_*_batch +
