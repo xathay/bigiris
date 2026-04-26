@@ -138,22 +138,22 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel rust git sudo
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          # Force bfd as the final linker. Arch's /etc/makepkg.conf.d/rust.conf
-          # sets RUSTFLAGS with -fuse-ld=lld, but lld in archlinux:latest
-          # fails to resolve C symbols bundled inside Rust rlibs (mimalloc
-          # here, previously ring) — `mi_free`, `mi_malloc_aligned` etc.
-          # show up undefined even though libmimalloc-sys built fine.
-          # Manjaro/Arch desktops don't hit this because their makepkg.conf
-          # doesn't force lld; gcc falls back to bfd which handles the rlib
-          # bundle correctly. Append our flag last so gcc's last-wins
-          # `-fuse-ld=` resolution picks bfd. We add to both files since
-          # the .d/ override only exists on newer images.
+          # Force linker-flavor=gnu-cc so rustc invokes gcc with its
+          # system-default linker (bfd). Stable Rust 1.85+ defaults to
+          # `gnu-lld-cc` on x86_64-unknown-linux-gnu, which adds
+          # -fuse-ld=lld to the gcc invocation late in the arg list (after
+          # any user -Clink-arg), so we can't override via -fuse-ld=bfd —
+          # gcc takes the last `-fuse-ld=` and lld wins. lld in this
+          # leaner archlinux:latest fails to resolve C symbols bundled
+          # inside Rust rlibs (mimalloc here, previously ring) — `mi_free`,
+          # `mi_malloc_aligned` etc. show up undefined even though
+          # libmimalloc-sys built fine. Manjaro/Arch desktops don't hit
+          # this because… (a) their toolchain isn't this stripped, and
+          # (b) makepkg.conf doesn't force lld.
           for f in /etc/makepkg.conf /etc/makepkg.conf.d/rust.conf; do
             [ -f "$f" ] || continue
-            echo 'RUSTFLAGS+=" -C link-arg=-fuse-ld=bfd"' >> "$f"
+            echo 'RUSTFLAGS+=" -C linker-flavor=gnu-cc"' >> "$f"
           done
-          echo "--- /etc/makepkg.conf.d/rust.conf ---"
-          cat /etc/makepkg.conf.d/rust.conf 2>/dev/null || echo "(absent)"
       - uses: actions/checkout@v4
       - name: chown for builder
         run: chown -R builder:builder .
