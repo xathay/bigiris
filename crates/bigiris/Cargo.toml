@@ -31,6 +31,12 @@ image.workspace = true
 # glibc on Linux). Translations live under data/po; .mo files are
 # compiled by the PKGBUILD and loaded from /usr/share/locale.
 gettext-rs = { workspace = true }
+# Faster global allocator for the multi-thread batch worker pool. Image
+# decode/encode allocates large RGBA buffers per file; the default glibc
+# malloc lock-contends across threads, mimalloc trims that off the hot
+# path. Trivial integration cost (one `#[global_allocator]` line) and no
+# runtime dep — the allocator is statically linked.
+mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

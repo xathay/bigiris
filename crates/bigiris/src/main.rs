@@ -8,6 +8,14 @@
 
 #![forbid(unsafe_code)]
 
+// Faster allocator for the multi-thread batch path. ~5-15% wall-clock
+// win on a 100-file convert batch on a 16-thread CPU per the perf
+// review (`mimalloc` ships with low fragmentation tuned for short-
+// lived multi-thread workloads, which is exactly what every Prisma
+// dialog produces). Statically linked; no runtime dep.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(feature = "gui")]
 mod gui;
 
