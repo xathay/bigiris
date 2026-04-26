@@ -184,3 +184,22 @@ jobs:
             --skipinteg \
             --nocheck \
             --clean
+      - name: diagnose rlib bundling on failure
+        if: failure()
+        working-directory: pkgbuild
+        run: |
+          set -x
+          rlib=$(find src/target -name 'liblibmimalloc_sys-*.rlib' | head -1)
+          echo "rlib=$rlib"
+          if [ -n "$rlib" ]; then
+            ar t "$rlib"
+            tmp=$(mktemp -d)
+            (cd "$tmp" && ar x "$OLDPWD/$rlib" && ls -la && \
+              for o in *.o; do
+                printf "\n=== nm %s | mi_ ===\n" "$o"
+                nm "$o" 2>/dev/null | grep -E "mi_free|mi_malloc_aligned" | head -5 || echo "(no mi_ symbols)"
+              done)
+          fi
+          out=$(find src/target -path '*libmimalloc-sys-*/out' -type d | head -1)
+          echo "out=$out"
+          [ -n "$out" ] && ls -la "$out" && (cd "$out" && for a in *.a; do echo "=== $a ==="; ar t "$a" | head -10; done)
