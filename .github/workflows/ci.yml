@@ -138,15 +138,22 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel rust git sudo
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          # Force bfd as the final linker. rustc on Arch defaults to
-          # ld.lld, and lld in the archlinux:latest container fails to
-          # resolve C symbols bundled inside Rust rlibs (mimalloc here,
-          # previously ring) — `mi_free`, `mi_malloc_aligned` etc. show
-          # up undefined even though libmimalloc-sys built fine. Local
-          # Manjaro/Arch builds work because makepkg.conf there has no
-          # `-fuse-ld=lld`, so gcc falls back to bfd. Mirror that.
-          echo 'RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=bfd"' \
-            >> /etc/makepkg.conf
+          # Force bfd as the final linker. Arch's /etc/makepkg.conf.d/rust.conf
+          # sets RUSTFLAGS with -fuse-ld=lld, but lld in archlinux:latest
+          # fails to resolve C symbols bundled inside Rust rlibs (mimalloc
+          # here, previously ring) — `mi_free`, `mi_malloc_aligned` etc.
+          # show up undefined even though libmimalloc-sys built fine.
+          # Manjaro/Arch desktops don't hit this because their makepkg.conf
+          # doesn't force lld; gcc falls back to bfd which handles the rlib
+          # bundle correctly. Append our flag last so gcc's last-wins
+          # `-fuse-ld=` resolution picks bfd. We add to both files since
+          # the .d/ override only exists on newer images.
+          for f in /etc/makepkg.conf /etc/makepkg.conf.d/rust.conf; do
+            [ -f "$f" ] || continue
+            echo 'RUSTFLAGS+=" -C link-arg=-fuse-ld=bfd"' >> "$f"
+          done
+          echo "--- /etc/makepkg.conf.d/rust.conf ---"
+          cat /etc/makepkg.conf.d/rust.conf 2>/dev/null || echo "(absent)"
       - uses: actions/checkout@v4
       - name: chown for builder
         run: chown -R builder:builder .
