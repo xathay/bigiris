@@ -31,6 +31,14 @@ optdepends=(
   'io.elementary.files: integração no gerenciador Files (elementary)'
 )
 makedepends=('rust' 'cargo' 'git' 'pkgconf' 'gettext')
+# Disable LTO. Arch's default makepkg env appends `-flto=auto` to CFLAGS
+# and `-C linker-plugin-lto` to RUSTFLAGS, which makes cc-rs emit pure
+# LTO bitcode for libmimalloc-sys's static.o. Without an LLVM gold/LTO
+# plugin loaded into the linker (bfd or rust-lld), every `mi_*` symbol
+# shows up undefined at the final link. Confirmed against the leaner
+# archlinux:latest CI image; some user setups can hit it too. We keep
+# -O3 and the mimalloc batch perf win without LTO.
+options=('!lto')
 source=("git+https://github.com/xathay/bigiris.git")
 sha256sums=('SKIP')
 install="$pkgname.install"
