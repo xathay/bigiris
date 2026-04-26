@@ -4420,7 +4420,8 @@ enum BatchTick {
     /// progress fraction without waiting for the next Started message.
     Finished { done: usize, total: usize },
     /// Worker exited (cleanly or via cancel). Carries the summary the
-    /// dialog renders in the status row.
+    /// dialog renders in the status row, plus elapsed wall-clock and
+    /// bytes-in/out for the after-batch stats line.
     Done {
         ok: usize,
         skip: usize,
@@ -4429,6 +4430,9 @@ enum BatchTick {
         done: usize,
         total: usize,
         cancelled: bool,
+        elapsed: std::time::Duration,
+        bytes_in: u64,
+        bytes_out: u64,
     },
 }
 
@@ -4700,6 +4704,13 @@ fn build_batch_dialog(
             let (tx, rx) = std::sync::mpsc::channel::<BatchTick>();
             let cancelled_w = cancelled.clone();
             std::thread::spawn(move || {
+                let start = std::time::Instant::now();
+                let bytes_in: u64 = files_owned
+                    .iter()
+                    .filter_map(|p| std::fs::metadata(p).ok())
+                    .map(|m| m.len())
+                    .sum();
+                let mut bytes_out = 0u64;
                 let mut ok = 0usize;
                 let mut skip = 0usize;
                 let mut fail = 0usize;
@@ -4715,7 +4726,12 @@ fn build_batch_dialog(
                         .unwrap_or_else(|| f.display().to_string());
                     let _ = tx.send(BatchTick::Started { idx, total, file: display_name });
                     match convert_file_to(f, out_dir_snapshot.as_deref(), fmt, &opts, policy) {
-                        Ok(ConvertOutcome::Written { .. }) => ok += 1,
+                        Ok(ConvertOutcome::Written { output }) => {
+                            ok += 1;
+                            if let Ok(meta) = std::fs::metadata(&output) {
+                                bytes_out += meta.len();
+                            }
+                        }
                         Ok(ConvertOutcome::Skipped { .. }) => skip += 1,
                         Err(e) => {
                             fail += 1;
@@ -4736,6 +4752,9 @@ fn build_batch_dialog(
                     done: done_count,
                     total,
                     cancelled: was_cancelled,
+                    elapsed: start.elapsed(),
+                    bytes_in,
+                    bytes_out,
                 });
             });
 
@@ -4753,19 +4772,43 @@ fn build_batch_dialog(
                     Ok(BatchTick::Finished { done, total }) => {
                         progress.set_fraction(done as f64 / total.max(1) as f64);
                     }
-                    Ok(BatchTick::Done { ok, skip, fail, first_err, done, total, cancelled }) => {
+                    Ok(BatchTick::Done {
+                        ok,
+                        skip,
+                        fail,
+                        first_err,
+                        done,
+                        total,
+                        cancelled,
+                        elapsed,
+                        bytes_in,
+                        bytes_out,
+                    }) => {
                         running.set(false);
-                        let msg = if cancelled {
+                        let timing = batch_runner::format_duration(elapsed);
+                        let mut msg = if cancelled {
                             format!(
-                                "Cancelado após {done}/{total}. {ok} gravado(s), \
-                                     {skip} ignorado(s), {fail} falha(s)."
+                                "Cancelado após {done}/{total} em {timing}. \
+                                 {ok} gravado(s), {skip} ignorado(s), {fail} falha(s)."
                             )
                         } else {
                             format!(
-                                "Concluído. {ok} gravado(s), {skip} ignorado(s), \
-                                     {fail} falha(s)."
+                                "Concluído em {timing}. \
+                                 {ok} gravado(s), {skip} ignorado(s), {fail} falha(s)."
                             )
                         };
+                        if ok > 0 && bytes_in > 0 && bytes_out > 0 {
+                            let delta = batch_runner::format_size_delta(bytes_in, bytes_out);
+                            let avg_in = bytes_in / (ok as u64).max(1);
+                            let avg_out = bytes_out / (ok as u64).max(1);
+                            msg.push_str(&format!(
+                                "\n{} → {} ({delta}) · média por arquivo {} → {}",
+                                batch_runner::format_size(bytes_in),
+                                batch_runner::format_size(bytes_out),
+                                batch_runner::format_size(avg_in),
+                                batch_runner::format_size(avg_out),
+                            ));
+                        }
                         status.set_text(&msg);
                         if let Some(err) = first_err {
                             status.set_text(&format!("{msg}\n{err}"));
@@ -4934,20 +4977,7 @@ fn pick_output_folder(
 }
 
 /// Humaniza um tamanho em bytes para algo como "2.3 GB" ou "842 KB".
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
-    const GB: u64 = 1024 * MB;
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.0} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{bytes} B")
-    }
-}
+use batch_runner::format_size;
 
 pub fn run_animate_dialog(files: Vec<PathBuf>) -> i32 {
     let app = adw::Application::builder().application_id(APP_ID).build();
