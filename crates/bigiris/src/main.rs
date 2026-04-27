@@ -664,7 +664,8 @@ fn run_remove_bg(model: &str, files: &[PathBuf]) -> color_eyre::Result<()> {
 }
 
 fn remove_bg_one(path: &std::path::Path) -> color_eyre::Result<PathBuf> {
-    let img = image::open(path).map_err(|e| color_eyre::eyre::eyre!("decode: {e}"))?;
+    let img =
+        bigimage_core::open_image(path).map_err(|e| color_eyre::eyre::eyre!("decode: {e}"))?;
     let out_img = bigimage_ai::background::remove_background(&img)
         .map_err(|e| color_eyre::eyre::eyre!("{e}"))?;
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("output");

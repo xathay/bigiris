@@ -518,7 +518,7 @@ fn build_window(app: &adw::Application, files: Rc<Vec<PathBuf>>) -> adw::Applica
 /// Uses [`image::GenericImageView::thumbnail`] — fast, avoids loading the
 /// full-res pixels into GPU memory.
 fn load_thumbnail(path: &Path) -> Result<gdk::Texture, Box<dyn std::error::Error>> {
-    let img = image::open(path)?;
+    let img = bigimage_core::open_image(path)?;
     let thumb = img.thumbnail(THUMB_EDGE, THUMB_EDGE).to_rgba8();
     let (w, h) = thumb.dimensions();
     let stride = (w as usize) * 4;
@@ -1087,7 +1087,7 @@ fn rebuild_edited_texture(state: &Rc<RefCell<ViewerState>>, path: &Path) {
         }
         return;
     }
-    let img = match image::open(path) {
+    let img = match bigimage_core::open_image(path) {
         Ok(i) => i,
         Err(e) => {
             tracing::error!(?path, error = %e, "edit: falha ao reabrir pra edição");
@@ -1197,7 +1197,7 @@ fn save_edits(state: &Rc<RefCell<ViewerState>>) {
 /// encoder pela extensão. Nada de pipeline bigimage-core aqui: evita
 /// arrastar política de sufixo/overwrite pra dentro do caminho do viewer.
 fn write_edits_to_disk(path: &Path, ops: &[EditOp]) -> Result<(), Box<dyn std::error::Error>> {
-    let img = image::open(path)?;
+    let img = bigimage_core::open_image(path)?;
     let edited = ops.iter().fold(img, |acc, op| apply_op_to_image(acc, *op));
     edited.save(path)?;
     Ok(())
@@ -1696,7 +1696,7 @@ fn copy_current_to_clipboard(state: &Rc<RefCell<ViewerState>>) {
         }
         (s.window().clone(), s.files[s.idx].clone())
     };
-    let Ok(img) = image::open(&path) else {
+    let Ok(img) = bigimage_core::open_image(&path) else {
         tracing::warn!(?path, "copy: falha ao decodificar");
         return;
     };
@@ -1730,7 +1730,7 @@ fn print_current(state: &Rc<RefCell<ViewerState>>) {
     );
 
     op.connect_draw_page(move |_, ctx, _page_nr| {
-        let Ok(img) = image::open(&path) else { return };
+        let Ok(img) = bigimage_core::open_image(&path) else { return };
         let rgba = img.to_rgba8();
         let (iw, ih) = rgba.dimensions();
 
@@ -2212,7 +2212,7 @@ type Histogram = [u32; 768];
 type LoadedTexture = (gdk::Texture, (u32, u32), Histogram);
 
 fn load_texture(path: &Path) -> Result<LoadedTexture, Box<dyn std::error::Error>> {
-    let img = image::open(path)?;
+    let img = bigimage_core::open_image(path)?;
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
     let raw = rgba.into_raw();
@@ -4238,8 +4238,23 @@ fn build_properties_file_group(path: &Path) -> adw::PreferencesGroup {
         }
     }
 
-    if let Some(ext) = path.extension() {
-        group.add(&info_row("Formato", &ext.to_string_lossy().to_uppercase()));
+    // Sniff format by magic bytes — `path.extension()` lies for partial-sync
+    // files (Nextcloud `.chunking-*`, browser `.part`/`.crdownload`, `.tmp`)
+    // even when the bytes are a valid PNG/JPEG/etc. Falls back to extension
+    // when sniffing fails (truly unknown / corrupt / non-image file).
+    let ext = path.extension().map(|e| e.to_string_lossy().to_uppercase());
+    let sniffed = image::ImageReader::open(path)
+        .ok()
+        .and_then(|r| r.with_guessed_format().ok())
+        .and_then(|r| r.format())
+        .map(format_image_format);
+    match (sniffed, ext) {
+        (Some(s), Some(e)) if s != e => {
+            group.add(&info_row("Formato", &format!("{s} (extensão: {e})")));
+        }
+        (Some(s), _) => group.add(&info_row("Formato", &s)),
+        (None, Some(e)) => group.add(&info_row("Formato", &e)),
+        (None, None) => {}
     }
 
     match std::fs::metadata(path) {
@@ -4259,18 +4274,40 @@ fn build_properties_file_group(path: &Path) -> adw::PreferencesGroup {
 
 fn build_properties_image_group(path: &Path) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder().title(gettext("Imagem")).build();
-    match image::image_dimensions(path) {
-        Ok((w, h)) => {
+
+    // One open() reused for dimensions + color type. into_decoder() reads
+    // only the header for most formats (PNG IHDR, JPEG SOF, WebP RIFF), so
+    // partial-sync files like Nextcloud `.chunking-*` still report their
+    // shape even if the pixel stream is incomplete.
+    let decoder = image::ImageReader::open(path)
+        .ok()
+        .and_then(|r| r.with_guessed_format().ok())
+        .and_then(|r| r.into_decoder().ok());
+    match decoder {
+        Some(dec) => {
+            let (w, h) = image::ImageDecoder::dimensions(&dec);
+            let color = image::ImageDecoder::color_type(&dec);
             group.add(&info_row("Dimensões", &format!("{w} × {h} px")));
+
             let mp = (f64::from(w) * f64::from(h)) / 1_000_000.0;
             if mp >= 0.1 {
                 group.add(&info_row("Megapixels", &format!("{mp:.1} MP")));
             }
+            if w > 0 && h > 0 {
+                let (rw, rh) = simplify_ratio(w, h);
+                group.add(&info_row("Razão de aspecto", &format!("{rw}:{rh}")));
+            }
+            group.add(&info_row("Modo de cor", color_type_label(color)));
+            group.add(&info_row("Bits por canal", color_type_bits(color)));
         }
-        Err(e) => {
-            group.add(&info_row("Dimensões", &format!("(falha: {e})")));
+        None => {
+            group.add(&info_row(
+                "Dimensões",
+                "(falha: não foi possível identificar o formato pelo conteúdo)",
+            ));
         }
     }
+
     // Orientação EXIF — só aparece se houver tag e != 1 (1 = upright).
     if let Ok(meta) = metadata::read(path) {
         if let Some(o) = meta.orientation {
@@ -4283,6 +4320,70 @@ fn build_properties_image_group(path: &Path) -> adw::PreferencesGroup {
         }
     }
     group
+}
+
+/// Maps `image::ImageFormat` to the short human label users expect to see
+/// (matches what's shown in the Convert dialog).
+fn format_image_format(f: image::ImageFormat) -> String {
+    use image::ImageFormat::*;
+    match f {
+        Png => "PNG",
+        Jpeg => "JPEG",
+        Gif => "GIF",
+        WebP => "WebP",
+        Avif => "AVIF",
+        Tiff => "TIFF",
+        Bmp => "BMP",
+        Ico => "ICO",
+        Hdr => "HDR",
+        OpenExr => "OpenEXR",
+        Pnm => "PNM",
+        Tga => "TGA",
+        Dds => "DDS",
+        Farbfeld => "Farbfeld",
+        Qoi => "QOI",
+        _ => "—",
+    }
+    .to_string()
+}
+
+/// Friendly label for the decoded pixel layout, matching what the Convert
+/// dialog says when picking encoders.
+fn color_type_label(c: image::ColorType) -> &'static str {
+    use image::ColorType::*;
+    match c {
+        L8 | L16 => "Tons de cinza",
+        La8 | La16 => "Tons de cinza + alfa",
+        Rgb8 | Rgb16 | Rgb32F => "RGB",
+        Rgba8 | Rgba16 | Rgba32F => "RGBA",
+        _ => "—",
+    }
+}
+
+/// Bit depth per channel. 32F is reported as "32 (float)" so users don't
+/// confuse high-precision HDR with overkill integer depth.
+fn color_type_bits(c: image::ColorType) -> &'static str {
+    use image::ColorType::*;
+    match c {
+        L8 | La8 | Rgb8 | Rgba8 => "8",
+        L16 | La16 | Rgb16 | Rgba16 => "16",
+        Rgb32F | Rgba32F => "32 (float)",
+        _ => "—",
+    }
+}
+
+/// Reduce W:H to its smallest integer pair via gcd. Used in the Properties
+/// dialog so 1920×1080 shows as 16:9 instead of opaque pixel counts.
+fn simplify_ratio(w: u32, h: u32) -> (u32, u32) {
+    fn gcd(a: u32, b: u32) -> u32 {
+        if b == 0 {
+            a
+        } else {
+            gcd(b, a % b)
+        }
+    }
+    let d = gcd(w, h);
+    (w / d, h / d)
 }
 
 fn build_properties_exif_group(meta: &metadata::Metadata) -> adw::PreferencesGroup {
@@ -5247,7 +5348,7 @@ fn remove_bg_one_with_session(
     session: &mut bigimage_ai::background::BgSession,
     src: &Path,
 ) -> Result<PathBuf, String> {
-    let img = image::open(src).map_err(|e| format!("decode: {e}"))?;
+    let img = bigimage_core::open_image(src).map_err(|e| format!("decode: {e}"))?;
     let out = session.process(&img).map_err(|e| e.to_string())?;
     let dest = nobg_output_path(src);
     out.save_with_format(&dest, image::ImageFormat::Png).map_err(|e| format!("encode: {e}"))?;

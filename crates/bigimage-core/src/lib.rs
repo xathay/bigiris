@@ -42,6 +42,25 @@ pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+/// Open and decode an image, dispatching the decoder by **content** (magic
+/// bytes) instead of file extension.
+///
+/// `image::open` routes through the extension, so files like
+/// `foo.png-chunking-3510624803-2-0` (Nextcloud sync), `foo.png.part`
+/// (Firefox), `foo.png.crdownload` (Chrome), `foo.tmp` and friends fail with
+/// "extension not recognized as an image format" even though the bytes are a
+/// valid PNG/JPEG/etc. Sniffing the header avoids the false negative; on a
+/// well-named file it costs the same.
+pub fn open_image(path: impl AsRef<std::path::Path>) -> image::ImageResult<image::DynamicImage> {
+    image::ImageReader::open(path.as_ref())?.with_guessed_format()?.decode()
+}
+
+/// Read just the dimensions of an image, dispatching the decoder by content.
+/// See [`open_image`] for why this matters.
+pub fn image_dimensions(path: impl AsRef<std::path::Path>) -> image::ImageResult<(u32, u32)> {
+    image::ImageReader::open(path.as_ref())?.with_guessed_format()?.into_dimensions()
+}
+
 /// Errors returned by core pipelines.
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -127,5 +146,24 @@ mod tests {
     fn convert_job_roundtrip() {
         let job = ConvertJob::new("a.jpg", "a.png", Format::Png);
         assert_eq!(job.target_format, Format::Png);
+    }
+
+    #[test]
+    fn sniffed_helpers_open_files_with_misleading_extensions() {
+        // Regression: Nextcloud `.chunking-*`, browser `.part`/`.crdownload`,
+        // and `.tmp` files routinely contain valid PNG/JPEG bytes under a
+        // suffix that `image::open` / `image::image_dimensions` reject.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.png");
+        image::RgbImage::from_pixel(8, 4, image::Rgb([10, 20, 30])).save(&real).unwrap();
+        let chunked = dir.path().join("real.png-chunking-3510624803-2-0");
+        std::fs::copy(&real, &chunked).unwrap();
+
+        // Upstream API fails on the bad extension…
+        assert!(image::open(&chunked).is_err());
+        assert!(image::image_dimensions(&chunked).is_err());
+        // …our sniffed helpers handle it.
+        assert_eq!(image_dimensions(&chunked).unwrap(), (8, 4));
+        assert_eq!(open_image(&chunked).unwrap().to_rgb8().dimensions(), (8, 4));
     }
 }
